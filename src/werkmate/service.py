@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from .database import WerkMateDatabase
@@ -49,6 +49,56 @@ class WerkMateService:
         if definition[1] <= definition[0] and reported_start.time() < definition[1]:
             base_date -= timedelta(days=1)
         return standard_shift(number, base_date, definition)
+
+    def statistics(self, start_date: date, end_date: date) -> dict:
+        if end_date < start_date:
+            raise ValueError("Das Enddatum darf nicht vor dem Startdatum liegen.")
+        days: dict[date, dict] = {}
+        for session in self.database.history(limit=1_000_000, status="abgeschlossen"):
+            started = datetime.fromisoformat(str(session["reported_started_at"]))
+            if not start_date <= started.date() <= end_date:
+                continue
+            ended = datetime.fromisoformat(str(session["reported_ended_at"]))
+            planned_seconds = int(
+                session.get("planned_seconds")
+                or int(session["quantity_to_process"]) * int(session["seconds_per_piece"])
+            )
+            actual_seconds = max(
+                int((ended - started).total_seconds()) - int(session["pause_seconds"] or 0), 0
+            )
+            planned_quantity = int(session["quantity_to_process"])
+            measured_quantity = int(
+                session["reported_quantity"] or 0
+                if session["session_kind"] == "credit"
+                else session["completed_quantity"] or 0
+            )
+            item = days.setdefault(started.date(), {
+                "date": started.date(), "sessions": 0, "completed": 0, "reported": 0,
+                "credit_change": 0, "planned_quantity": 0, "measured_quantity": 0,
+                "planned_seconds": 0, "actual_seconds": 0,
+            })
+            completed = int(session["completed_quantity"] or 0)
+            reported = int(session["reported_quantity"] or 0)
+            item["sessions"] += 1
+            item["completed"] += completed
+            item["reported"] += reported
+            item["credit_change"] += completed - reported
+            item["planned_quantity"] += planned_quantity
+            item["measured_quantity"] += measured_quantity
+            item["planned_seconds"] += planned_seconds
+            item["actual_seconds"] += actual_seconds
+        rows = [days[key] for key in sorted(days, reverse=True)]
+        total = {
+            "sessions": sum(item["sessions"] for item in rows),
+            "completed": sum(item["completed"] for item in rows),
+            "reported": sum(item["reported"] for item in rows),
+            "credit_change": sum(item["credit_change"] for item in rows),
+            "planned_quantity": sum(item["planned_quantity"] for item in rows),
+            "measured_quantity": sum(item["measured_quantity"] for item in rows),
+            "planned_seconds": sum(item["planned_seconds"] for item in rows),
+            "actual_seconds": sum(item["actual_seconds"] for item in rows),
+        }
+        return {"start_date": start_date, "end_date": end_date, "days": rows, "total": total}
 
     def create_order(
         self,

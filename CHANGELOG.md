@@ -4,6 +4,16 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.17.0] - 2026-08-26
+
+### Neu
+
+- Eigener kompakter Reiter für persönliche Auswertungen
+- Umschaltung zwischen heutigem Tag und laufender Woche
+- Summen für Einsätze, bearbeitete und gemeldete Stück sowie Guthabenänderung
+- Zusammengefasste Zeit- und Stückabweichung mit verständlicher Grün-/Rot-Anzeige
+- Tageszeilen zur schnellen Nachvollziehbarkeit ohne überladene Diagramme
+
 ## [0.16.0] - 2026-08-26
 
 ### Neu

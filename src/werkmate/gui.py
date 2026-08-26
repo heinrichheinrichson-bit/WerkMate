@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import tkinter as tk
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from tkinter import filedialog, messagebox, ttk
 
@@ -104,12 +104,14 @@ class WerkMateApp(tk.Tk):
         self.tabs.pack(fill="both", expand=True, padx=14, pady=(0, 14))
         self.dashboard_tab = ttk.Frame(self.tabs, padding=18)
         self.quick_tab = ttk.Frame(self.tabs, padding=18)
+        self.analytics_tab = ttk.Frame(self.tabs, padding=18)
         self.plan_tab = ttk.Frame(self.tabs, padding=18)
         self.orders_tab = ttk.Frame(self.tabs, padding=18)
         self.catalog_tab = ttk.Frame(self.tabs, padding=18)
         self.history_tab = ttk.Frame(self.tabs, padding=18)
         self.settings_tab = ttk.Frame(self.tabs, padding=18)
         self.tabs.add(self.dashboard_tab, text="Laufender Auftrag")
+        self.tabs.add(self.analytics_tab, text="Auswertung")
         self.tabs.add(self.quick_tab, text="Schnellstart")
         self.tabs.add(self.plan_tab, text="Schichtplan")
         self.tabs.add(self.orders_tab, text="Aufträge")
@@ -118,6 +120,7 @@ class WerkMateApp(tk.Tk):
         self.tabs.add(self.settings_tab, text="Einstellungen")
 
         self._build_dashboard()
+        self._build_analytics()
         self._build_quick_start()
         self._build_shift_plan()
         self._build_orders()
@@ -188,6 +191,84 @@ class WerkMateApp(tk.Tk):
             row=2, column=4, columnspan=3, sticky="ew", pady=(16, 0), padx=(6, 0)
         )
         finish.columnconfigure(5, weight=1)
+
+    def _build_analytics(self) -> None:
+        header = ttk.Frame(self.analytics_tab)
+        header.pack(fill="x")
+        ttk.Label(header, text="Persönliche Auswertung", style="Title.TLabel").pack(side="left")
+        self.analytics_period = ttk.Combobox(
+            header, values=("Heute", "Diese Woche"), state="readonly", width=16
+        )
+        self.analytics_period.set("Heute")
+        self.analytics_period.pack(side="right")
+        self.analytics_period.bind("<<ComboboxSelected>>", lambda _event: self.refresh_analytics())
+        cards = ttk.LabelFrame(self.analytics_tab, text="Zusammenfassung", padding=14)
+        cards.pack(fill="x", pady=(16, 12))
+        self.analytics_labels = []
+        for column, caption in enumerate(
+            ("Einsätze", "Bearbeitet", "Rückgemeldet", "Guthabenänderung", "Zeit", "Stück")
+        ):
+            cell = ttk.Frame(cards)
+            cell.grid(row=0, column=column, sticky="nsew", padx=8)
+            ttk.Label(cell, text=caption, style="Muted.TLabel").pack()
+            value = ttk.Label(cell, text="–", font=("Segoe UI", 13, "bold"))
+            value.pack(pady=(4, 0))
+            self.analytics_labels.append(value)
+            cards.columnconfigure(column, weight=1)
+        table = ttk.LabelFrame(self.analytics_tab, text="Tageswerte", padding=10)
+        table.pack(fill="both", expand=True)
+        columns = ("date", "sessions", "actual", "reported", "credit", "time", "pieces")
+        self.analytics_tree = ttk.Treeview(table, columns=columns, show="headings", height=14)
+        for column, heading, width in zip(
+            columns,
+            ("Datum", "Einsätze", "Bearbeitet", "Rückgemeldet", "Guthaben", "Zeitabweichung", "Stückabweichung"),
+            (100, 80, 100, 110, 100, 180, 180),
+        ):
+            self.analytics_tree.heading(column, text=heading)
+            self.analytics_tree.column(column, width=width, anchor="center")
+        self.analytics_tree.pack(fill="both", expand=True)
+        ttk.Label(
+            self.analytics_tab,
+            text="Grün = früher bzw. mehr als geplant · Rot = später bzw. weniger als geplant",
+            style="Muted.TLabel",
+        ).pack(anchor="w", pady=(8, 0))
+
+    @staticmethod
+    def _analytics_delta(actual: int, planned: int, *, seconds: bool = False) -> str:
+        delta = actual - planned
+        percent = delta / planned * 100 if planned else 0
+        if seconds:
+            value = f"{abs(delta) // 60} min"
+            good = delta <= 0
+            wording = "früher" if delta < 0 else "später" if delta > 0 else "genau"
+        else:
+            value = f"{abs(delta)} Stk"
+            good = delta >= 0
+            wording = "mehr" if delta > 0 else "weniger" if delta < 0 else "genau"
+        color = "🟢" if good else "🔴"
+        return f"{color} {value} {wording} ({abs(percent):.1f} %)" if delta else f"🟢 {wording}"
+
+    def refresh_analytics(self) -> None:
+        today = date.today()
+        start = today if self.analytics_period.get() == "Heute" else today - timedelta(days=today.weekday())
+        result = self.service.statistics(start, today)
+        total = result["total"]
+        time_text = self._analytics_delta(total["actual_seconds"], total["planned_seconds"], seconds=True)
+        piece_text = self._analytics_delta(total["measured_quantity"], total["planned_quantity"])
+        values = (
+            total["sessions"], total["completed"], total["reported"],
+            f"{total['credit_change']:+d} Stk", time_text, piece_text,
+        )
+        for label, value in zip(self.analytics_labels, values):
+            label.configure(text=value)
+        self.analytics_tree.delete(*self.analytics_tree.get_children())
+        for item in result["days"]:
+            self.analytics_tree.insert("", "end", values=(
+                item["date"].strftime("%d.%m.%Y"), item["sessions"], item["completed"],
+                item["reported"], f"{item['credit_change']:+d}",
+                self._analytics_delta(item["actual_seconds"], item["planned_seconds"], seconds=True),
+                self._analytics_delta(item["measured_quantity"], item["planned_quantity"]),
+            ))
 
     def _build_orders(self) -> None:
         form = ttk.LabelFrame(self.orders_tab, text="Neuen Auftrag anlegen", padding=12)
@@ -1772,6 +1853,7 @@ class WerkMateApp(tk.Tk):
     def refresh_all(self) -> None:
         self.refresh_orders()
         self.refresh_dashboard()
+        self.refresh_analytics()
         self.refresh_catalog()
         self._refresh_die_suggestions()
         self._refresh_quick_dies()

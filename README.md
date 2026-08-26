@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.16.0 – Datenwiederherstellung und CSV-Export**
+**Version 0.17.0 – kompakte Tages- und Wochenauswertung**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern

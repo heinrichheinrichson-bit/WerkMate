@@ -1,4 +1,4 @@
-# WerkMate 0.16.0 – Anleitung
+# WerkMate 0.17.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -320,6 +320,12 @@ bewertet.
 Der Zeitprozentsatz verwendet die Vorgabezeit der geplanten Einsatzmenge als
 Basis. Der Stückprozentsatz verwendet die geplante Stückzahl als Basis.
 
+Der Reiter **Auswertung** fasst dieselben Daten wahlweise für heute oder die
+laufende Woche zusammen. Angezeigt werden Einsätze, bearbeitete und gemeldete
+Stück, Guthabenänderung sowie die zusammengefasste Zeit- und Stückabweichung.
+Darunter stehen die einzelnen Tageswerte. Grün bedeutet früher beziehungsweise
+mehr als geplant, Rot bedeutet später beziehungsweise weniger als geplant.
+
 ## 13. Gespeicherte Aufträge korrigieren
 
 Markiere einen Auftrag und klicke auf **Auftrag bearbeiten** oder doppelklicke
@@ -399,7 +405,6 @@ das Formular ein. Dauerhaft übernommen werden sie erst mit
 
 - noch keine Android- oder iOS-App
 - keine zuverlässige Benachrichtigung bei geschlossenem Programm
-- noch keine grafische Tages- und Wochenstatistik
 
 Der Rechenkern, die lokale Speicherung und der grundlegende persönliche Ablauf
 sind bereits vorhanden und automatisiert getestet.
