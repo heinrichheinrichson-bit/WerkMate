@@ -37,9 +37,14 @@ def test_service_calculates_pause_and_status(tmp_path) -> None:
     status = service.status(datetime(2026, 8, 26, 18, 0))
     assert status["time_state"] == "verbleibend"
     assert status["time_seconds"] == 4 * 3_600 + 3 * 60
-    assert status["pieces_until_shift_end"] == 11
-    # 18:00 liegt noch drei Minuten im festen Pausenfenster bis 18:03.
+    assert status["pieces_until_shift_end"] == 23
+    assert status["target_piece_equivalent"] == Decimal("23.1")
     assert status["unused_seconds"] == 2 * 60
+
+    # Die Schichtprognose bleibt ab Anmeldung stabil und schrumpft nicht mit der Uhrzeit.
+    later_status = service.status(datetime(2026, 8, 26, 20, 0))
+    assert later_status["target_piece_equivalent"] == Decimal("23.1")
+    assert later_status["next_piece_overtime_seconds"] == 18 * 60
 
 
 def test_service_reports_overdue_and_finishes_partial_quantity(tmp_path) -> None:

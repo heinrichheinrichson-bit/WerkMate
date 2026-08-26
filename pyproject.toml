@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "werkmate"
-version = "0.7.0"
+version = "0.7.1"
 description = "Persoenlicher Auftrags-, Schicht- und Vorgabezeiten-Assistent"
 readme = "README.md"
 requires-python = ">=3.11"

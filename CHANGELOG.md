@@ -4,6 +4,17 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.7.1] - 2026-08-26
+
+### Geändert
+
+- Große Gesamtaufträge werden nicht mehr automatisch als ein durchgehender Einsatz behandelt
+- Einsatzmenge wird mit den vollständig möglichen Stücken der Restschicht vorbelegt
+- „Soll-Ende“ wurde als geplante Rückmeldezeit für die Einsatzmenge verständlich gemacht
+- Schichtprognose basiert dauerhaft auf der Anmeldezeit und verändert sich nicht sekündlich
+- Warnung, wenn bewusst mehr Stück als innerhalb der Restschicht möglich gestartet werden
+- Countdown und Warntext beziehen sich auf die geplante Rückmeldung statt den Gesamtauftrag
+
 ## [0.7.0] - 2026-08-26
 
 ### Hinzugefügt

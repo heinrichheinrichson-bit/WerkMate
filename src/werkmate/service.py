@@ -159,28 +159,30 @@ class WerkMateService:
             # wird eine noch bevorstehende Standardpause anhand der Schicht rekonstruiert.
             shift_number = int(session["shift_name"].split()[-1])
             shift = shift_for_start(shift_number, datetime.fromisoformat(session["reported_started_at"]))
+            reported_start = datetime.fromisoformat(session["reported_started_at"])
             pieces, remainder, overtime = possible_complete_pieces(
-                current,
+                reported_start,
                 shift_end,
                 int(session["seconds_per_piece"]),
                 tuple(p for p in shift.breaks if p.end <= shift_end),
             )
-            session_limit = int(session["quantity_to_process"])
-            session["pieces_until_shift_end"] = min(pieces, session_limit)
+            order = self.database.get_order(int(session["order_id"]))
+            open_quantity = int(order["open_quantity"]) if order else int(session["quantity_to_process"])
+            session["pieces_until_shift_end"] = min(pieces, open_quantity)
             session["unused_seconds"] = int(remainder.total_seconds())
             session["next_piece_overtime_seconds"] = (
-                int(overtime.total_seconds()) if pieces < session_limit else 0
+                int(overtime.total_seconds()) if pieces < open_quantity else 0
             )
             available_seconds = int(
                 productive_duration_between(
-                    current,
+                    reported_start,
                     shift_end,
                     tuple(p for p in shift.breaks if p.end <= shift_end),
                 ).total_seconds()
             )
             session["target_piece_equivalent"] = min(
                 Decimal(available_seconds) / Decimal(int(session["seconds_per_piece"])),
-                Decimal(session_limit),
+                Decimal(open_quantity),
             )
         return session
 

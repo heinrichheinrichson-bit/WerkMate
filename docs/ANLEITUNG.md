@@ -1,4 +1,4 @@
-# WerkMate 0.7.0 – Anleitung
+# WerkMate 0.7.1 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -96,15 +96,25 @@ Schichtende. Beispiel bei 20 Minuten pro Stück in der Frühschicht:
 Die Berechnung ändert sich sofort mit der Anmeldezeit. Bei einem teilweise
 bearbeiteten Auftrag wird sie außerdem auf die tatsächlich offene Menge begrenzt.
 
+WerkMate schlägt als **Einsatzmenge** nur die Stückzahl vor, die innerhalb der
+Restschicht vollständig fertig werden kann. Ein Auftrag mit 48 offenen Stück
+wird deshalb nicht als ein durchgehender 48-Stück-Einsatz gestartet. Im Beispiel
+werden 23 Stück für diesen persönlichen Einsatz geplant; 25 bleiben anschließend
+als Restauftrag offen.
+
 WerkMate wechselt zum laufenden Auftrag und zeigt:
 
 - Auftrags-, Gesenk- und Arbeitsgangnummer
 - Menge und Vorgabezeit
-- berechnetes Soll-Ende
+- geplante Rückmeldezeit für die gewählte Einsatzmenge
 - verbleibende Zeit beziehungsweise rote Überziehung
 - laut Vorgabe vollständig mögliche Stücke bis Schichtende
 - rechnerische Sollleistung mit einer Dezimalstelle
 - Überzeit, die das nächste Stück verursachen würde
+
+Die Schichtprognose wird ab der gewählten Anmeldezeit berechnet und bleibt
+während des Einsatzes stabil. Nur der Countdown bis zur geplanten Rückmeldung
+läuft weiter.
 
 Die feste Schichtpause wird nur abrechnungstechnisch berücksichtigt. Der Timer
 wird nicht manuell eingefroren.
@@ -127,8 +137,8 @@ Programm geöffnet ist.
 3. Ergänze bei Bedarf eine Meldungsnotiz.
 4. Klicke auf **Rückmeldung speichern**.
 
-Die Abmeldezeit darf vom Soll-Ende abweichen. Liegt sie vor der Anmeldezeit oder
-mehr als 30 Minuten vom Soll-Ende entfernt, zeigt WerkMate eine Warnung. Die
+Die Abmeldezeit darf von der geplanten Rückmeldezeit abweichen. Liegt sie vor der
+Anmeldezeit oder mehr als 30 Minuten von der geplanten Rückmeldezeit entfernt, zeigt WerkMate eine Warnung. Die
 Eingabe kann trotzdem bewusst bestätigt werden.
 
 Beispiel:
@@ -162,7 +172,7 @@ Der Reiter **Historie** zeigt alle persönlichen Arbeitseinsätze mit:
 - Status
 
 Ein Doppelklick auf einen Eintrag öffnet weitere Details einschließlich
-Soll-Ende und Notiz.
+geplanter Rückmeldezeit und Notiz.
 
 Die Suche findet Auftragsnummern, Gesenknummern, Arbeitsgänge und Notiztexte.
 Zusätzlich kann die Liste nach Meldungsstatus gefiltert werden.

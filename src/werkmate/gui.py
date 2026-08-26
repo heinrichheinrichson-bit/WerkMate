@@ -197,8 +197,13 @@ class WerkMateApp(tk.Tk):
         self.order_entries[1].bind("<<ComboboxSelected>>", self._catalog_die_selected)
         self.order_entries[1].bind("<FocusIn>", lambda _event: self._refresh_die_suggestions())
         self.order_entries[2].bind("<<ComboboxSelected>>", self._catalog_operation_selected)
-        self.start_time.bind("<FocusOut>", lambda _event: self.refresh_start_forecast())
-        self.shift_number.bind("<<ComboboxSelected>>", lambda _event: self.refresh_start_forecast())
+        self.start_time.bind(
+            "<FocusOut>", lambda _event: self.refresh_start_forecast(apply_recommendation=True)
+        )
+        self.shift_number.bind(
+            "<<ComboboxSelected>>",
+            lambda _event: self.refresh_start_forecast(apply_recommendation=True),
+        )
         self.shift_number.set(str(current_shift_number(local_now())))
         self._fill_start_now()
 
@@ -291,7 +296,7 @@ class WerkMateApp(tk.Tk):
     def _fill_start_now(self) -> None:
         self._set_entry(self.start_time, local_now().strftime("%Y-%m-%d %H:%M"))
         if hasattr(self, "start_forecast"):
-            self.refresh_start_forecast()
+            self.refresh_start_forecast(apply_recommendation=True)
 
     def _fill_finish_now(self) -> None:
         self._set_entry(self.finish_time, local_now().strftime("%Y-%m-%d %H:%M"))
@@ -415,10 +420,9 @@ class WerkMateApp(tk.Tk):
             return
         if order is None:
             return
-        self._set_entry(self.start_quantity, str(order["open_quantity"]))
-        self.refresh_start_forecast()
+        self.refresh_start_forecast(apply_recommendation=True)
 
-    def refresh_start_forecast(self) -> None:
+    def refresh_start_forecast(self, *, apply_recommendation: bool = False) -> None:
         try:
             forecast = self.service.production_forecast(
                 order_id=self.selected_order_id(),
@@ -433,10 +437,12 @@ class WerkMateApp(tk.Tk):
             return
         available = format_duration(forecast["available_seconds"])
         equivalent = format_piece_equivalent(forecast["target_equivalent"])
+        if apply_recommendation:
+            self._set_entry(self.start_quantity, str(forecast["complete_pieces"]))
         text = (
             f"Bis {forecast['shift_end']:%H:%M}: {available} produktiv · "
             f"Sollleistung {equivalent} Stück · "
-            f"{forecast['complete_pieces']} Stück vollständig · "
+            f"empfohlener Einsatz {forecast['complete_pieces']} vollständige Stück · "
             f"danach {forecast['open_after_shift']} Stück offen"
         )
         if forecast["open_after_shift"]:
@@ -450,9 +456,24 @@ class WerkMateApp(tk.Tk):
         try:
             order_id = self.selected_order_id()
             shift = int(self.shift_number.get()) if self.shift_number.get() else None
+            quantity = int(self.start_quantity.get())
+            if shift is not None:
+                forecast = self.service.production_forecast(
+                    order_id=order_id,
+                    reported_start=self._entry_datetime(self.start_time),
+                    shift_number=shift,
+                )
+                if quantity > forecast["complete_pieces"] and not messagebox.askyesno(
+                    "Einsatzmenge überschreitet die Restschicht",
+                    f"Innerhalb der Schicht sind {forecast['complete_pieces']} Stück vollständig möglich.\n"
+                    f"Du hast {quantity} Stück für diesen Einsatz eingetragen.\n\n"
+                    "Trotzdem mit dieser Einsatzmenge starten?",
+                    parent=self,
+                ):
+                    return
             self.service.start_work(
                 order_id=order_id,
-                quantity=int(self.start_quantity.get()),
+                quantity=quantity,
                 reported_start=self._entry_datetime(self.start_time),
                 shift_number=shift,
             )
@@ -670,15 +691,20 @@ class WerkMateApp(tk.Tk):
                  f"{seconds_to_minutes(status['seconds_per_piece'])} min/Stück"
         )
         overdue = status["time_state"] == "ueberzogen"
-        self.countdown_caption.configure(text="AUFTRAG ÜBERZOGEN" if overdue else "VERBLEIBEND")
+        self.countdown_caption.configure(
+            text="RÜCKMELDUNG ÜBERFÄLLIG" if overdue else "BIS GEPLANTER RÜCKMELDUNG"
+        )
         self.countdown.configure(
             text=("+" if overdue else "") + format_duration(status["time_seconds"]),
             style="Danger.TLabel" if overdue else "Countdown.TLabel",
         )
-        self.target_label.configure(text=f"Soll-Ende: {display_time(status['target_end'])}")
+        self.target_label.configure(
+            text=f"Geplante Rückmeldezeit für {status['quantity_to_process']} Stück: "
+                 f"{display_time(status['target_end'])}"
+        )
         if "pieces_until_shift_end" in status:
             self.forecast_label.configure(
-                text=f"Sollleistung bis Schichtende: "
+                text=f"Schichtprognose ab Anmeldung: "
                      f"{format_piece_equivalent(status['target_piece_equivalent'])} Stück\n"
                      f"Davon vollständig: {status['pieces_until_shift_end']} Stück\n"
                      f"Nächstes Stück: +{format_duration(status['next_piece_overtime_seconds'])} Überzeit"
@@ -689,8 +715,9 @@ class WerkMateApp(tk.Tk):
             self.notified_session_id = int(status["id"])
             self.bell()
             messagebox.showwarning(
-                "Sollzeit erreicht",
-                "Die Sollzeit ist abgelaufen. Bitte Auftrag rückmelden oder die Überziehung weiterlaufen lassen.",
+                "Geplante Rückmeldezeit erreicht",
+                "Die geplante Rückmeldezeit für diesen Arbeitseinsatz ist erreicht. "
+                "Bitte Stückzahl rückmelden oder die Überziehung weiterlaufen lassen.",
                 parent=self,
             )
 
