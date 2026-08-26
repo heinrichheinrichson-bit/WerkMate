@@ -4,9 +4,16 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.3.0] - 2026-08-26
+
 ### Hinzugefügt
 
-- Bedienbarer lokaler MVP
+- Bedienbarer deutscher Konsolen-MVP
+- Befehle für Auftrag, Start, Live-Status, Teilrückmeldung, Historie und Übergabe
+- Warnung mit bewusster Bestätigung bei auffälligen Abmeldezeiten
+- Prognose vollständiger Stücke und Überzeit des nächsten Stücks
+- Dokumentierter Beispielablauf
+- Automatische Migration der lokalen Datenbank auf Schema-Version 2
 
 ## [0.2.0] - 2026-08-26
 

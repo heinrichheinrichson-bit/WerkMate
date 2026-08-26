@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class WerkMateDatabase:
@@ -58,6 +58,8 @@ class WerkMateDatabase:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     order_id INTEGER NOT NULL REFERENCES orders(id),
                     shift_name TEXT,
+                    shift_start TEXT,
+                    shift_end TEXT,
                     quantity_to_process INTEGER NOT NULL CHECK(quantity_to_process > 0),
                     seconds_per_piece INTEGER NOT NULL CHECK(seconds_per_piece > 0),
                     actual_started_at TEXT NOT NULL,
@@ -91,6 +93,14 @@ class WerkMateDatabase:
                     ON correction_log(entity_type, entity_id);
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(work_sessions)").fetchall()
+            }
+            if "shift_start" not in columns:
+                connection.execute("ALTER TABLE work_sessions ADD COLUMN shift_start TEXT")
+            if "shift_end" not in columns:
+                connection.execute("ALTER TABLE work_sessions ADD COLUMN shift_end TEXT")
             connection.execute(
                 "INSERT OR REPLACE INTO metadata(key, value) VALUES('schema_version', ?)",
                 (str(SCHEMA_VERSION),),
@@ -170,6 +180,8 @@ class WerkMateDatabase:
         target_end: datetime,
         pause_seconds: int,
         note: str = "",
+        shift_start: datetime | None = None,
+        shift_end: datetime | None = None,
     ) -> int:
         order = self.get_order(order_id)
         if order is None:
@@ -183,13 +195,17 @@ class WerkMateDatabase:
             cursor = connection.execute(
                 """
                 INSERT INTO work_sessions(
-                    order_id, shift_name, quantity_to_process, seconds_per_piece,
+                    order_id, shift_name, shift_start, shift_end,
+                    quantity_to_process, seconds_per_piece,
                     actual_started_at, reported_started_at, target_end,
                     pause_seconds, note, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    order_id, shift_name, quantity_to_process, seconds_per_piece,
+                    order_id, shift_name,
+                    shift_start.isoformat() if shift_start else None,
+                    shift_end.isoformat() if shift_end else None,
+                    quantity_to_process, seconds_per_piece,
                     actual_started_at.isoformat(), reported_started_at.isoformat(),
                     target_end.isoformat(), pause_seconds, note.strip(), now, now,
                 ),
