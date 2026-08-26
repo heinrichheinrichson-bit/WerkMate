@@ -1,4 +1,4 @@
-# WerkMate 0.15.0 – Anleitung
+# WerkMate 0.16.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -368,9 +368,17 @@ Alternativ ist eine manuelle Sicherung möglich:
 2. Die Datei `werkmate.sqlite3` aus dem oben genannten Ordner kopieren.
 3. Die Kopie an einem sicheren Ort ablegen.
 
-Zur Wiederherstellung WerkMate schließen und die gesicherte Datei wieder an
-denselben Ort kopieren. Eine komfortable Sicherungsfunktion in der Oberfläche
-ist für eine spätere Version vorgesehen.
+Alternativ kann die Datei bei geschlossenem WerkMate weiterhin manuell an
+denselben Ort zurückkopiert werden.
+
+Im Reiter **Einstellungen** kann eine Sicherung inzwischen direkt über
+**Sicherung wiederherstellen** ausgewählt werden. WerkMate prüft zuerst, ob es
+sich um eine intakte WerkMate-Datenbank handelt, und legt vor dem Ersetzen
+automatisch eine zusätzliche Kopie des aktuellen Stands an.
+
+**CSV-Dateien exportieren** erzeugt im gewählten Ordner zwei Excel-taugliche,
+mit Semikolon getrennte Dateien: eine Auftragsübersicht und eine vollständige
+Rückmeldungshistorie.
 
 ## 16. Schichten und Pausen einstellen
 
@@ -391,8 +399,7 @@ das Formular ein. Dauerhaft übernommen werden sie erst mit
 
 - noch keine Android- oder iOS-App
 - keine zuverlässige Benachrichtigung bei geschlossenem Programm
-- noch keine Wiederherstellung einer Sicherung direkt in der Oberfläche
-- keine Statistiken und Exporte
+- noch keine grafische Tages- und Wochenstatistik
 
 Der Rechenkern, die lokale Speicherung und der grundlegende persönliche Ablauf
 sind bereits vorhanden und automatisiert getestet.

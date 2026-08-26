@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import sqlite3
 from contextlib import contextmanager
@@ -819,6 +820,71 @@ class WerkMateDatabase:
             target.close()
             source.close()
         return destination_path
+
+    def restore_from(self, source_path: str | Path) -> None:
+        source_path = Path(source_path)
+        if not source_path.is_file():
+            raise ValueError("Die ausgewählte Sicherungsdatei wurde nicht gefunden.")
+        source = sqlite3.connect(source_path)
+        source.row_factory = sqlite3.Row
+        try:
+            integrity = source.execute("PRAGMA integrity_check").fetchone()[0]
+            if integrity != "ok":
+                raise ValueError("Die Sicherungsdatei ist beschädigt.")
+            tables = {
+                row["name"] for row in source.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                ).fetchall()
+            }
+            if not {"metadata", "orders", "work_sessions"} <= tables:
+                raise ValueError("Die Datei ist keine gültige WerkMate-Sicherung.")
+            target = sqlite3.connect(self.path)
+            try:
+                source.backup(target)
+            finally:
+                target.close()
+        finally:
+            source.close()
+        self.initialize()
+
+    def export_csv(self, destination_directory: str | Path) -> tuple[Path, Path]:
+        directory = Path(destination_directory)
+        directory.mkdir(parents=True, exist_ok=True)
+        orders_path = directory / "WerkMate-Auftraege.csv"
+        history_path = directory / "WerkMate-Rueckmeldungen.csv"
+        order_fields = (
+            "Auftragsnummer", "Gesenknummer", "Arbeitsgang", "Gesamtmenge",
+            "Bearbeitet", "Rueckgemeldet", "Guthaben", "Offen", "Minuten_pro_Stueck",
+            "Status", "Notiz",
+        )
+        with orders_path.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.writer(handle, delimiter=";")
+            writer.writerow(order_fields)
+            for item in self.list_orders():
+                writer.writerow((
+                    item["order_number"], item["die_number"], item["operation"],
+                    item["original_quantity"], item["completed_quantity"],
+                    item["reported_quantity"], item["credit_quantity"], item["open_quantity"],
+                    str(item["seconds_per_piece"] / 60).replace(".", ","),
+                    item["status"], item["note"],
+                ))
+        history_fields = (
+            "ID", "Auftragsnummer", "Gesenknummer", "Arbeitsgang", "Anmeldung",
+            "Geplantes_Ende", "Abmeldung", "Bearbeitet", "Rueckgemeldet", "Planmenge",
+            "Vorgabe_Sekunden_pro_Stueck", "Art", "Status", "Notiz",
+        )
+        with history_path.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.writer(handle, delimiter=";")
+            writer.writerow(history_fields)
+            for item in self.history(limit=1_000_000):
+                writer.writerow((
+                    item["id"], item["order_number"], item["die_number"], item["operation"],
+                    item["reported_started_at"], item["target_end"], item["reported_ended_at"],
+                    item["completed_quantity"], item["reported_quantity"],
+                    item["quantity_to_process"], item["seconds_per_piece"],
+                    item["session_kind"], item["status"], item["note"],
+                ))
+        return orders_path, history_path
 
     def save_standard(
         self,

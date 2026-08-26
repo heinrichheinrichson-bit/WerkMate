@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import datetime, timedelta
 
 import pytest
@@ -278,3 +279,30 @@ def test_completed_session_correction_recalculates_order_and_keeps_audit(databas
     assert session["target_end"] == datetime(2026, 8, 26, 7).isoformat()
     fields = {item["field_name"] for item in database.corrections("session", session_id)}
     assert {"reported_started_at", "target_end", "reported_ended_at", "completed_quantity", "note"} <= fields
+
+
+def test_csv_export_and_validated_restore(database, tmp_path) -> None:
+    create_order(database)
+    export_dir = tmp_path / "export"
+    orders_path, history_path = database.export_csv(export_dir)
+    assert orders_path.read_text(encoding="utf-8-sig").startswith("Auftragsnummer;")
+    assert "FA-4711" in orders_path.read_text(encoding="utf-8-sig")
+    assert history_path.read_text(encoding="utf-8-sig").startswith("ID;")
+
+    backup = tmp_path / "backup.sqlite3"
+    database.backup_to(backup)
+    database.create_order(
+        order_number="SPAETER", die_number="X", operation="FP",
+        original_quantity=1, seconds_per_piece=60,
+    )
+    assert database.find_order("SPAETER") is not None
+    database.restore_from(backup)
+    assert database.find_order("FA-4711") is not None
+    assert database.find_order("SPAETER") is None
+
+
+def test_restore_rejects_unrelated_sqlite_file(database, tmp_path) -> None:
+    unrelated = WerkMateDatabase(tmp_path / "temporary.sqlite3")
+    unrelated.path.write_bytes(b"not a database")
+    with pytest.raises(sqlite3.DatabaseError):
+        database.restore_from(unrelated.path)

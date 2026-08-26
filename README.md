@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.15.0 – sichere nachträgliche Rückmeldungskorrekturen**
+**Version 0.16.0 – Datenwiederherstellung und CSV-Export**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern

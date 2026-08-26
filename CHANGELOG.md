@@ -4,6 +4,16 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.16.0] - 2026-08-26
+
+### Neu
+
+- Lokale Sicherungen können direkt in der Oberfläche wiederhergestellt werden
+- Integritäts- und WerkMate-Prüfung vor jeder Wiederherstellung
+- Automatische Sicherheitskopie des aktuellen Stands vor dem Ersetzen
+- Excel-tauglicher CSV-Export der Aufträge und vollständigen Rückmeldungshistorie
+- Seltene Datenwerkzeuge übersichtlich im Reiter Einstellungen gebündelt
+
 ## [0.15.0] - 2026-08-26
 
 ### Neu

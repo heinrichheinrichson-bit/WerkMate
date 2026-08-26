@@ -1668,6 +1668,21 @@ class WerkMateApp(tk.Tk):
             text="Zeitformat: HH:MM · Nachtschichten über Mitternacht werden automatisch erkannt.",
             style="Muted.TLabel",
         ).pack(anchor="w")
+        data = ttk.LabelFrame(self.settings_tab, text="Datensicherheit und Export", padding=12)
+        data.pack(fill="x", pady=(24, 0))
+        ttk.Label(
+            data,
+            text="Sicherungen wiederherstellen oder Aufträge und Rückmeldungen als CSV ausgeben.",
+            style="Muted.TLabel",
+        ).pack(anchor="w", pady=(0, 10))
+        data_buttons = ttk.Frame(data)
+        data_buttons.pack(fill="x")
+        ttk.Button(data_buttons, text="CSV-Dateien exportieren", command=self.export_csv).pack(
+            side="left"
+        )
+        ttk.Button(
+            data_buttons, text="Sicherung wiederherstellen", command=self.restore_database
+        ).pack(side="left", padx=8)
 
     def reset_shift_settings_form(self) -> None:
         defaults = {
@@ -1697,6 +1712,60 @@ class WerkMateApp(tk.Tk):
         messagebox.showinfo(
             "Einstellungen gespeichert",
             "Die neuen Zeiten gelten für alle künftig gestarteten Arbeitseinsätze und Pläne.",
+            parent=self,
+        )
+
+    def export_csv(self) -> None:
+        destination = filedialog.askdirectory(parent=self, title="Ordner für CSV-Export auswählen")
+        if not destination:
+            return
+        try:
+            orders_path, history_path = self.database.export_csv(destination)
+        except (OSError, sqlite3.Error) as error:
+            messagebox.showerror("Export fehlgeschlagen", str(error), parent=self)
+            return
+        messagebox.showinfo(
+            "CSV-Export erstellt",
+            f"Aufträge:\n{orders_path}\n\nRückmeldungen:\n{history_path}",
+            parent=self,
+        )
+
+    def restore_database(self) -> None:
+        source = filedialog.askopenfilename(
+            parent=self,
+            title="WerkMate-Sicherung auswählen",
+            filetypes=(("WerkMate-Datenbank", "*.sqlite3"), ("Alle Dateien", "*.*")),
+        )
+        if not source:
+            return
+        if not messagebox.askyesno(
+            "Sicherung wiederherstellen",
+            "Der aktuelle Datenstand wird durch die gewählte Sicherung ersetzt.\n\n"
+            "WerkMate legt vorher automatisch eine zusätzliche Sicherheitskopie an. Fortfahren?",
+            parent=self,
+        ):
+            return
+        safety_copy = self.database.path.with_name(
+            f"werkmate-vor-wiederherstellung-{datetime.now():%Y%m%d-%H%M%S}.sqlite3"
+        )
+        try:
+            self.database.backup_to(safety_copy)
+            self.database.restore_from(source)
+        except (OSError, sqlite3.Error, ValueError) as error:
+            messagebox.showerror(
+                "Wiederherstellung fehlgeschlagen",
+                f"{error}\n\nDer bisherige Stand wurde nicht bewusst verworfen.\n"
+                f"Sicherheitskopie: {safety_copy}",
+                parent=self,
+            )
+            return
+        self.shift_plan_items.clear()
+        self.shift_plan_results.clear()
+        self.load_persisted_shift_plan()
+        self.refresh_all()
+        messagebox.showinfo(
+            "Sicherung wiederhergestellt",
+            f"Die Daten wurden übernommen.\n\nVorheriger Stand:\n{safety_copy}",
             parent=self,
         )
 
