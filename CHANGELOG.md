@@ -4,6 +4,19 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.7.0] - 2026-08-26
+
+### Hinzugefügt
+
+- Automatische Sollstückzahl aus Anmeldezeit, Schichtende, Pause und Vorgabezeit
+- Dezimale Sollleistung, beispielsweise `23,1 Stück`
+- Separate Anzeige vollständig fertigstellbarer Stücke
+- Restzeit im nächsten Stück und notwendige Überzeit zur Fertigstellung
+- Offene Restmenge nach Schichtende
+- Automatische Aktualisierung bei Auftrag-, Schicht- oder Zeitwahl
+- Automatische Vorauswahl der aktuell laufenden Standardschicht
+- Begrenzung der Prognose auf die offene Auftragsmenge
+
 ## [0.6.0] - 2026-08-26
 
 ### Hinzugefügt

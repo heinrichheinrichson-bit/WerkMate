@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 import tkinter as tk
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 from tkinter import filedialog, messagebox, ttk
 
 from . import __version__
@@ -22,6 +23,19 @@ def display_time(value: str | None) -> str:
     if not value:
         return "–"
     return datetime.fromisoformat(value).strftime("%d.%m.%Y %H:%M")
+
+
+def format_piece_equivalent(value: Decimal) -> str:
+    return str(value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)).replace(".", ",")
+
+
+def current_shift_number(at: datetime) -> int:
+    current = at.time()
+    if current >= datetime.strptime("05:45", "%H:%M").time() and current < datetime.strptime("13:45", "%H:%M").time():
+        return 1
+    if current >= datetime.strptime("13:45", "%H:%M").time() and current < datetime.strptime("21:45", "%H:%M").time():
+        return 2
+    return 3
 
 
 class WerkMateApp(tk.Tk):
@@ -142,6 +156,7 @@ class WerkMateApp(tk.Tk):
             self.orders_tree.column(column, width=width, anchor="center")
         self.orders_tree.pack(fill="both", expand=True)
         self.orders_tree.bind("<Double-1>", lambda _event: self.edit_selected_order())
+        self.orders_tree.bind("<<TreeviewSelect>>", self._order_selected)
         order_actions = ttk.Frame(list_frame)
         order_actions.pack(fill="x", pady=(8, 0))
         ttk.Button(order_actions, text="Auftrag bearbeiten", command=self.edit_selected_order).pack(
@@ -172,10 +187,19 @@ class WerkMateApp(tk.Tk):
         ttk.Button(start, text="Rest abgeben", command=self.hand_off_selected).grid(
             row=1, column=7, sticky="ew", pady=(8, 0)
         )
+        self.start_forecast = ttk.Label(
+            start,
+            text="Auftrag und Schicht auswählen, um die Sollstückzahl zu berechnen.",
+            justify="left",
+        )
+        self.start_forecast.grid(row=1, column=0, columnspan=7, sticky="w", pady=(10, 0))
         start.columnconfigure(7, weight=1)
         self.order_entries[1].bind("<<ComboboxSelected>>", self._catalog_die_selected)
         self.order_entries[1].bind("<FocusIn>", lambda _event: self._refresh_die_suggestions())
         self.order_entries[2].bind("<<ComboboxSelected>>", self._catalog_operation_selected)
+        self.start_time.bind("<FocusOut>", lambda _event: self.refresh_start_forecast())
+        self.shift_number.bind("<<ComboboxSelected>>", lambda _event: self.refresh_start_forecast())
+        self.shift_number.set(str(current_shift_number(local_now())))
         self._fill_start_now()
 
     def _build_catalog(self) -> None:
@@ -266,6 +290,8 @@ class WerkMateApp(tk.Tk):
 
     def _fill_start_now(self) -> None:
         self._set_entry(self.start_time, local_now().strftime("%Y-%m-%d %H:%M"))
+        if hasattr(self, "start_forecast"):
+            self.refresh_start_forecast()
 
     def _fill_finish_now(self) -> None:
         self._set_entry(self.finish_time, local_now().strftime("%Y-%m-%d %H:%M"))
@@ -381,6 +407,44 @@ class WerkMateApp(tk.Tk):
         if not selected:
             raise ValueError("Bitte zuerst einen Auftrag in der Liste auswählen.")
         return int(self.orders_tree.item(selected[0], "values")[0])
+
+    def _order_selected(self, _event=None) -> None:
+        try:
+            order = self.database.get_order(self.selected_order_id())
+        except ValueError:
+            return
+        if order is None:
+            return
+        self._set_entry(self.start_quantity, str(order["open_quantity"]))
+        self.refresh_start_forecast()
+
+    def refresh_start_forecast(self) -> None:
+        try:
+            forecast = self.service.production_forecast(
+                order_id=self.selected_order_id(),
+                reported_start=self._entry_datetime(self.start_time),
+                shift_number=int(self.shift_number.get()),
+            )
+        except (ValueError, TypeError):
+            if hasattr(self, "start_forecast"):
+                self.start_forecast.configure(
+                    text="Auftrag, Anmeldezeit und Schicht auswählen, um die Sollstückzahl zu berechnen."
+                )
+            return
+        available = format_duration(forecast["available_seconds"])
+        equivalent = format_piece_equivalent(forecast["target_equivalent"])
+        text = (
+            f"Bis {forecast['shift_end']:%H:%M}: {available} produktiv · "
+            f"Sollleistung {equivalent} Stück · "
+            f"{forecast['complete_pieces']} Stück vollständig · "
+            f"danach {forecast['open_after_shift']} Stück offen"
+        )
+        if forecast["open_after_shift"]:
+            text += (
+                f"\nRestzeit im Stück: {format_duration(forecast['remainder_seconds'])} · "
+                f"nächstes Stück vollständig: +{format_duration(forecast['next_piece_overtime_seconds'])}"
+            )
+        self.start_forecast.configure(text=text)
 
     def start_selected(self) -> None:
         try:
@@ -614,7 +678,9 @@ class WerkMateApp(tk.Tk):
         self.target_label.configure(text=f"Soll-Ende: {display_time(status['target_end'])}")
         if "pieces_until_shift_end" in status:
             self.forecast_label.configure(
-                text=f"Bis Schichtende laut Vorgabe: {status['pieces_until_shift_end']} vollständige Stück\n"
+                text=f"Sollleistung bis Schichtende: "
+                     f"{format_piece_equivalent(status['target_piece_equivalent'])} Stück\n"
+                     f"Davon vollständig: {status['pieces_until_shift_end']} Stück\n"
                      f"Nächstes Stück: +{format_duration(status['next_piece_overtime_seconds'])} Überzeit"
             )
         else:

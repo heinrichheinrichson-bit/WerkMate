@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import datetime, time, timedelta
+from decimal import Decimal
 
 from .database import WerkMateDatabase
 from .models import Shift
-from .timecalc import possible_complete_pieces, standard_shift, target_end
+from .timecalc import (
+    possible_complete_pieces,
+    productive_duration_between,
+    standard_shift,
+    target_end,
+)
 
 
 def shift_for_start(number: int, reported_start: datetime) -> Shift:
@@ -95,6 +101,48 @@ class WerkMateService:
             note=note,
         )
 
+    def production_forecast(
+        self,
+        *,
+        order_id: int,
+        reported_start: datetime,
+        shift_number: int,
+        custom_shift_end: datetime | None = None,
+    ) -> dict:
+        """Berechnet Sollstückzahl und vollständige Stücke bis Schichtende."""
+        order = self.database.get_order(order_id)
+        if order is None:
+            raise ValueError("Auftrag nicht gefunden.")
+        shift = with_custom_shift_end(
+            shift_for_start(shift_number, reported_start), custom_shift_end
+        )
+        if reported_start >= shift.end:
+            raise ValueError("Die Anmeldezeit liegt nicht vor dem Schichtende.")
+        available = productive_duration_between(reported_start, shift.end, shift.breaks)
+        available_seconds = int(available.total_seconds())
+        seconds_per_piece = int(order["seconds_per_piece"])
+        raw_equivalent = Decimal(available_seconds) / Decimal(seconds_per_piece)
+        open_quantity = int(order["open_quantity"])
+        target_equivalent = min(raw_equivalent, Decimal(open_quantity))
+        complete_pieces = min(available_seconds // seconds_per_piece, open_quantity)
+        used_seconds = complete_pieces * seconds_per_piece
+        remainder_seconds = max(available_seconds - used_seconds, 0)
+        has_more_pieces = open_quantity > complete_pieces
+        next_piece_overtime = (
+            max(seconds_per_piece - remainder_seconds, 0) if has_more_pieces else 0
+        )
+        return {
+            "shift_name": shift.name,
+            "shift_end": shift.end,
+            "available_seconds": available_seconds,
+            "target_equivalent": target_equivalent,
+            "complete_pieces": complete_pieces,
+            "remainder_seconds": remainder_seconds,
+            "next_piece_overtime_seconds": next_piece_overtime,
+            "open_after_shift": max(open_quantity - complete_pieces, 0),
+            "open_quantity": open_quantity,
+        }
+
     def status(self, now: datetime | None = None) -> dict | None:
         session = self.database.active_session()
         if session is None:
@@ -117,9 +165,23 @@ class WerkMateService:
                 int(session["seconds_per_piece"]),
                 tuple(p for p in shift.breaks if p.end <= shift_end),
             )
-            session["pieces_until_shift_end"] = pieces
+            session_limit = int(session["quantity_to_process"])
+            session["pieces_until_shift_end"] = min(pieces, session_limit)
             session["unused_seconds"] = int(remainder.total_seconds())
-            session["next_piece_overtime_seconds"] = int(overtime.total_seconds())
+            session["next_piece_overtime_seconds"] = (
+                int(overtime.total_seconds()) if pieces < session_limit else 0
+            )
+            available_seconds = int(
+                productive_duration_between(
+                    current,
+                    shift_end,
+                    tuple(p for p in shift.breaks if p.end <= shift_end),
+                ).total_seconds()
+            )
+            session["target_piece_equivalent"] = min(
+                Decimal(available_seconds) / Decimal(int(session["seconds_per_piece"])),
+                Decimal(session_limit),
+            )
         return session
 
     def finish_work(

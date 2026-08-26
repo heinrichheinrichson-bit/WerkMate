@@ -1,4 +1,4 @@
-# WerkMate 0.6.0 – Anleitung
+# WerkMate 0.7.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -84,6 +84,18 @@ der Auswahl, ohne historische Daten zu löschen.
    Reststückprognose bis Schichtende berechnet.
 5. Klicke auf **Arbeit starten**.
 
+Noch vor dem Start zeigt WerkMate automatisch die Sollleistung bis zum
+Schichtende. Beispiel bei 20 Minuten pro Stück in der Frühschicht:
+
+- produktiv verfügbare Zeit: 462 Minuten
+- rechnerische Sollleistung: 23,1 Stück
+- innerhalb der Schicht vollständig fertigstellbar: 23 Stück
+- verbleibende Zeit im begonnenen nächsten Stück: 2 Minuten
+- vollständiges 24. Stück: 18 Minuten Überzeit
+
+Die Berechnung ändert sich sofort mit der Anmeldezeit. Bei einem teilweise
+bearbeiteten Auftrag wird sie außerdem auf die tatsächlich offene Menge begrenzt.
+
 WerkMate wechselt zum laufenden Auftrag und zeigt:
 
 - Auftrags-, Gesenk- und Arbeitsgangnummer
@@ -91,6 +103,7 @@ WerkMate wechselt zum laufenden Auftrag und zeigt:
 - berechnetes Soll-Ende
 - verbleibende Zeit beziehungsweise rote Überziehung
 - laut Vorgabe vollständig mögliche Stücke bis Schichtende
+- rechnerische Sollleistung mit einer Dezimalstelle
 - Überzeit, die das nächste Stück verursachen würde
 
 Die feste Schichtpause wird nur abrechnungstechnisch berücksichtigt. Der Timer

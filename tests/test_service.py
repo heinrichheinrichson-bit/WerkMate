@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 import pytest
 
@@ -98,3 +99,22 @@ def test_handed_off_order_cannot_be_started_again(tmp_path) -> None:
             quantity=4,
             reported_start=datetime(2026, 8, 26, 6),
         )
+
+
+def test_early_shift_forecast_returns_decimal_target_and_complete_pieces(tmp_path) -> None:
+    service = WerkMateService(WerkMateDatabase(tmp_path / "db.sqlite3"))
+    order_id = service.create_order(
+        order_number="FA-48", die_number="8720", operation="FP1",
+        original_quantity=48, seconds_per_piece=1_200,
+    )
+    forecast = service.production_forecast(
+        order_id=order_id,
+        reported_start=datetime(2026, 8, 26, 5, 45),
+        shift_number=1,
+    )
+    assert forecast["available_seconds"] == 462 * 60
+    assert forecast["target_equivalent"] == Decimal("23.1")
+    assert forecast["complete_pieces"] == 23
+    assert forecast["remainder_seconds"] == 2 * 60
+    assert forecast["next_piece_overtime_seconds"] == 18 * 60
+    assert forecast["open_after_shift"] == 25
