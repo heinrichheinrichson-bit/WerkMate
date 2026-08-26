@@ -67,13 +67,16 @@ class WerkMateApp(tk.Tk):
         self.tabs.pack(fill="both", expand=True, padx=14, pady=(0, 14))
         self.dashboard_tab = ttk.Frame(self.tabs, padding=18)
         self.orders_tab = ttk.Frame(self.tabs, padding=18)
+        self.catalog_tab = ttk.Frame(self.tabs, padding=18)
         self.history_tab = ttk.Frame(self.tabs, padding=18)
         self.tabs.add(self.dashboard_tab, text="Laufender Auftrag")
         self.tabs.add(self.orders_tab, text="Aufträge")
+        self.tabs.add(self.catalog_tab, text="Gesenk-Katalog")
         self.tabs.add(self.history_tab, text="Historie")
 
         self._build_dashboard()
         self._build_orders()
+        self._build_catalog()
         self._build_history()
 
     def _build_dashboard(self) -> None:
@@ -117,7 +120,7 @@ class WerkMateApp(tk.Tk):
         self.order_entries: list[ttk.Entry] = []
         for column, label in enumerate(labels):
             ttk.Label(form, text=label).grid(row=0, column=column, sticky="w", padx=4)
-            entry = ttk.Entry(form, width=16)
+            entry = ttk.Combobox(form, width=16) if column in (1, 2) else ttk.Entry(form, width=16)
             entry.grid(row=1, column=column, sticky="ew", padx=4, pady=(3, 8))
             self.order_entries.append(entry)
             form.columnconfigure(column, weight=1)
@@ -170,7 +173,54 @@ class WerkMateApp(tk.Tk):
             row=1, column=7, sticky="ew", pady=(8, 0)
         )
         start.columnconfigure(7, weight=1)
+        self.order_entries[1].bind("<<ComboboxSelected>>", self._catalog_die_selected)
+        self.order_entries[1].bind("<FocusIn>", lambda _event: self._refresh_die_suggestions())
+        self.order_entries[2].bind("<<ComboboxSelected>>", self._catalog_operation_selected)
         self._fill_start_now()
+
+    def _build_catalog(self) -> None:
+        form = ttk.LabelFrame(self.catalog_tab, text="Vorgabe anlegen oder aktualisieren", padding=12)
+        form.pack(fill="x")
+        fields = ("Gesenknummer", "AG-Code", "Bezeichnung", "min/Stück", "Gesenkbeschreibung")
+        self.catalog_entries: list[ttk.Entry] = []
+        for column, label in enumerate(fields):
+            ttk.Label(form, text=label).grid(row=0, column=column, sticky="w", padx=4)
+            entry = ttk.Entry(form, width=18)
+            entry.grid(row=1, column=column, sticky="ew", padx=4, pady=(3, 8))
+            self.catalog_entries.append(entry)
+            form.columnconfigure(column, weight=1)
+        ttk.Label(form, text="Notiz zum Gesenk").grid(row=2, column=0, sticky="w", padx=4)
+        self.catalog_note = ttk.Entry(form)
+        self.catalog_note.grid(row=3, column=0, columnspan=4, sticky="ew", padx=4)
+        ttk.Button(form, text="Vorgabe speichern", command=self.save_catalog_standard).grid(
+            row=3, column=4, sticky="ew", padx=4
+        )
+
+        tools = ttk.Frame(self.catalog_tab)
+        tools.pack(fill="x", pady=(14, 8))
+        ttk.Label(tools, text="Katalog durchsuchen:").pack(side="left")
+        self.catalog_search = ttk.Entry(tools, width=30)
+        self.catalog_search.pack(side="left", padx=8)
+        self.catalog_search.bind("<Return>", lambda _event: self.refresh_catalog())
+        ttk.Button(tools, text="Suchen", command=self.refresh_catalog).pack(side="left")
+        ttk.Button(tools, text="Alle anzeigen", command=self.reset_catalog_search).pack(
+            side="left", padx=8
+        )
+        ttk.Button(tools, text="Ausgewählte Vorgabe deaktivieren", command=self.deactivate_catalog_standard).pack(
+            side="right"
+        )
+
+        columns = ("id", "die", "description", "code", "name", "time")
+        self.catalog_tree = ttk.Treeview(
+            self.catalog_tab, columns=columns, show="headings", height=16
+        )
+        headings = ("ID", "Gesenk", "Beschreibung", "AG", "Arbeitsgang", "Vorgabe")
+        widths = (45, 100, 190, 70, 210, 100)
+        for column, heading, width in zip(columns, headings, widths):
+            self.catalog_tree.heading(column, text=heading)
+            self.catalog_tree.column(column, width=width, anchor="center")
+        self.catalog_tree.pack(fill="both", expand=True)
+        self.catalog_tree.bind("<Double-1>", self.load_catalog_selection)
 
     def _build_history(self) -> None:
         filters = ttk.Frame(self.history_tab)
@@ -239,6 +289,92 @@ class WerkMateApp(tk.Tk):
         self.order_note.delete(0, tk.END)
         self.refresh_orders()
         messagebox.showinfo("Gespeichert", "Der Auftrag wurde lokal angelegt.", parent=self)
+
+    def _refresh_die_suggestions(self) -> None:
+        dies = sorted({item["die_number"] for item in self.database.list_catalog()})
+        self.order_entries[1].configure(values=dies)
+
+    def _catalog_die_selected(self, _event=None) -> None:
+        standards = self.database.standards_for_die(self.order_entries[1].get())
+        self._current_die_standards = {item["operation_code"]: item for item in standards}
+        self.order_entries[2].configure(values=tuple(self._current_die_standards))
+        self.order_entries[2].set("")
+
+    def _catalog_operation_selected(self, _event=None) -> None:
+        standard = getattr(self, "_current_die_standards", {}).get(self.order_entries[2].get())
+        if standard is None:
+            return
+        self._set_entry(
+            self.order_entries[4], str(seconds_to_minutes(standard["seconds_per_piece"]))
+        )
+
+    def save_catalog_standard(self) -> None:
+        try:
+            die, code, name, minutes, description = (entry.get() for entry in self.catalog_entries)
+            self.database.save_standard(
+                die_number=die,
+                operation_code=code,
+                operation_name=name,
+                seconds_per_piece=minutes_to_seconds(minutes),
+                die_description=description,
+                die_note=self.catalog_note.get(),
+            )
+        except ValueError as error:
+            messagebox.showerror("Vorgabe nicht gespeichert", str(error), parent=self)
+            return
+        for entry in self.catalog_entries:
+            entry.delete(0, tk.END)
+        self.catalog_note.delete(0, tk.END)
+        self.refresh_catalog()
+        self._refresh_die_suggestions()
+
+    def refresh_catalog(self) -> None:
+        self.catalog_tree.delete(*self.catalog_tree.get_children())
+        search = self.catalog_search.get() if hasattr(self, "catalog_search") else ""
+        for item in self.database.list_catalog(search=search):
+            self.catalog_tree.insert(
+                "", "end", iid=str(item["id"]), values=(
+                    item["id"], item["die_number"], item["description"],
+                    item["operation_code"], item["operation_name"],
+                    f"{seconds_to_minutes(item['seconds_per_piece'])} min",
+                )
+            )
+
+    def reset_catalog_search(self) -> None:
+        self.catalog_search.delete(0, tk.END)
+        self.refresh_catalog()
+
+    def load_catalog_selection(self, _event=None) -> None:
+        selected = self.catalog_tree.selection()
+        if not selected:
+            return
+        standard_id = int(selected[0])
+        item = next(
+            (entry for entry in self.database.list_catalog() if entry["id"] == standard_id), None
+        )
+        if item is None:
+            return
+        values = (
+            item["die_number"], item["operation_code"], item["operation_name"],
+            str(seconds_to_minutes(item["seconds_per_piece"])), item["description"],
+        )
+        for entry, value in zip(self.catalog_entries, values):
+            self._set_entry(entry, value)
+        self._set_entry(self.catalog_note, item["die_note"])
+
+    def deactivate_catalog_standard(self) -> None:
+        selected = self.catalog_tree.selection()
+        if not selected:
+            messagebox.showerror("Keine Auswahl", "Bitte eine Vorgabe auswählen.", parent=self)
+            return
+        if not messagebox.askyesno(
+            "Vorgabe deaktivieren",
+            "Die Vorgabe wird bei neuen Aufträgen nicht mehr vorgeschlagen. Historische Daten bleiben erhalten.",
+            parent=self,
+        ):
+            return
+        self.database.deactivate_standard(int(selected[0]))
+        self.refresh_catalog()
 
     def selected_order_id(self) -> int:
         selected = self.orders_tree.selection()
@@ -539,6 +675,8 @@ class WerkMateApp(tk.Tk):
     def refresh_all(self) -> None:
         self.refresh_orders()
         self.refresh_dashboard()
+        self.refresh_catalog()
+        self._refresh_die_suggestions()
         self.refresh_history()
 
     def _tick(self) -> None:

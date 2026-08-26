@@ -4,6 +4,18 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.6.0] - 2026-08-26
+
+### Hinzugefügt
+
+- Gesenk-Katalog mit Beschreibung und Notiz
+- Frei verwaltbare Arbeitsgangcodes und Bezeichnungen
+- Aktuelle Vorgabezeit je Kombination aus Gesenk und Arbeitsgang
+- Suche nach Gesenk, Beschreibung, Arbeitsgangcode und Arbeitsgangname
+- Aktualisierung und Deaktivierung von Vorgaben ohne Verlust historischer Daten
+- Automatische Vorschläge und Zeitübernahme beim Anlegen eines Auftrags
+- Automatische lokale Datenbankmigration auf Schema-Version 3
+
 ## [0.5.0] - 2026-08-26
 
 ### Hinzugefügt

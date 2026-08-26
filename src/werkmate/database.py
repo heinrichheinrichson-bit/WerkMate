@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class WerkMateDatabase:
@@ -86,11 +86,42 @@ class WerkMateDatabase:
                     changed_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS dies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    die_number TEXT NOT NULL UNIQUE,
+                    description TEXT NOT NULL DEFAULT '',
+                    note TEXT NOT NULL DEFAULT '',
+                    active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS operations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code TEXT NOT NULL UNIQUE,
+                    name TEXT NOT NULL,
+                    active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS standards (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    die_id INTEGER NOT NULL REFERENCES dies(id),
+                    operation_id INTEGER NOT NULL REFERENCES operations(id),
+                    seconds_per_piece INTEGER NOT NULL CHECK(seconds_per_piece > 0),
+                    active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(die_id, operation_id)
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_sessions_order ON work_sessions(order_id);
                 CREATE INDEX IF NOT EXISTS idx_sessions_reported_start
                     ON work_sessions(reported_started_at);
                 CREATE INDEX IF NOT EXISTS idx_corrections_entity
                     ON correction_log(entity_type, entity_id);
+                CREATE INDEX IF NOT EXISTS idx_standards_die ON standards(die_id);
                 """
             )
             columns = {
@@ -456,3 +487,119 @@ class WerkMateDatabase:
             target.close()
             source.close()
         return destination_path
+
+    def save_standard(
+        self,
+        *,
+        die_number: str,
+        operation_code: str,
+        operation_name: str,
+        seconds_per_piece: int,
+        die_description: str = "",
+        die_note: str = "",
+    ) -> int:
+        die_number = die_number.strip()
+        operation_code = operation_code.strip().upper()
+        operation_name = operation_name.strip()
+        if not die_number or not operation_code or not operation_name:
+            raise ValueError("Gesenknummer, Arbeitsgangcode und Bezeichnung sind Pflichtfelder.")
+        if seconds_per_piece <= 0:
+            raise ValueError("Die Vorgabezeit muss größer als null sein.")
+        now = self._now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO dies(die_number, description, note, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(die_number) DO UPDATE SET
+                    description = excluded.description,
+                    note = excluded.note,
+                    active = 1,
+                    updated_at = excluded.updated_at
+                """,
+                (die_number, die_description.strip(), die_note.strip(), now, now),
+            )
+            connection.execute(
+                """
+                INSERT INTO operations(code, name, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(code) DO UPDATE SET
+                    name = excluded.name,
+                    active = 1,
+                    updated_at = excluded.updated_at
+                """,
+                (operation_code, operation_name, now, now),
+            )
+            die_id = int(connection.execute(
+                "SELECT id FROM dies WHERE die_number = ?", (die_number,)
+            ).fetchone()["id"])
+            operation_id = int(connection.execute(
+                "SELECT id FROM operations WHERE code = ?", (operation_code,)
+            ).fetchone()["id"])
+            connection.execute(
+                """
+                INSERT INTO standards(
+                    die_id, operation_id, seconds_per_piece, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(die_id, operation_id) DO UPDATE SET
+                    seconds_per_piece = excluded.seconds_per_piece,
+                    active = 1,
+                    updated_at = excluded.updated_at
+                """,
+                (die_id, operation_id, seconds_per_piece, now, now),
+            )
+            return int(connection.execute(
+                "SELECT id FROM standards WHERE die_id = ? AND operation_id = ?",
+                (die_id, operation_id),
+            ).fetchone()["id"])
+
+    def list_catalog(self, *, search: str = "", include_inactive: bool = False) -> list[dict[str, Any]]:
+        conditions = [] if include_inactive else ["s.active = 1", "d.active = 1", "op.active = 1"]
+        parameters: list[Any] = []
+        if search.strip():
+            term = f"%{search.strip()}%"
+            conditions.append(
+                "(d.die_number LIKE ? OR d.description LIKE ? OR op.code LIKE ? OR op.name LIKE ?)"
+            )
+            parameters.extend([term] * 4)
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT s.id, d.die_number, d.description, d.note AS die_note,
+                       op.code AS operation_code, op.name AS operation_name,
+                       s.seconds_per_piece, s.active
+                FROM standards s
+                JOIN dies d ON d.id = s.die_id
+                JOIN operations op ON op.id = s.operation_id
+                {where}
+                ORDER BY d.die_number, op.code
+                """,  # noqa: S608 -- where contains only fixed fragments
+                parameters,
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def standards_for_die(self, die_number: str) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT s.id, op.code AS operation_code, op.name AS operation_name,
+                       s.seconds_per_piece
+                FROM standards s
+                JOIN dies d ON d.id = s.die_id
+                JOIN operations op ON op.id = s.operation_id
+                WHERE d.die_number = ? AND d.active = 1 AND op.active = 1 AND s.active = 1
+                ORDER BY op.code
+                """,
+                (die_number.strip(),),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def deactivate_standard(self, standard_id: int) -> None:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE standards SET active = 0, updated_at = ? WHERE id = ?",
+                (self._now(), standard_id),
+            )
+            if cursor.rowcount == 0:
+                raise ValueError("Vorgabe nicht gefunden.")

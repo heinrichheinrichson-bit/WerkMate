@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.5.0 – grafischer lokaler PC-Prototyp mit Korrekturhistorie**
+**Version 0.6.0 – PC-Prototyp mit Gesenk- und Vorgabezeiten-Katalog**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern
