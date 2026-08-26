@@ -1,4 +1,4 @@
-# WerkMate 0.17.0 – Anleitung
+# WerkMate 0.18.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -29,6 +29,10 @@ Starte anschließend die Datei:
 ```text
 WerkMate starten.bat
 ```
+
+Wenn `dist\WerkMate.exe` vorhanden ist, kann WerkMate auch direkt darüber ohne
+separat installiertes Python gestartet werden. Die persönlichen Daten sind in
+beiden Startvarianten dieselben. `WerkMate EXE bauen.bat` erzeugt eine neue EXE.
 
 Alternativ kann WerkMate aus PowerShell gestartet werden:
 

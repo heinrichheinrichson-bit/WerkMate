@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.17.0 – kompakte Tages- und Wochenauswertung**
+**Version 0.18.0 – eigenständige Windows-EXE**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern
@@ -38,7 +38,11 @@ Das Projekt verwendet [Semantic Versioning](https://semver.org/):
 Zum direkten Ausprobieren unter Windows kann außerdem `WerkMate starten.bat`
 im Projektordner doppelt angeklickt werden.
 
+Mit `WerkMate EXE bauen.bat` lässt sich eine ohne separat installiertes Python
+startbare Datei unter `dist\WerkMate.exe` erzeugen.
+
 Siehe [Anleitung](docs/ANLEITUNG.md),
 [MVP-Spezifikation](docs/MVP-SPEZIFIKATION.md),
-[Konsolen-MVP ausprobieren](docs/KONSOLEN-MVP.md) und
+[Konsolen-MVP ausprobieren](docs/KONSOLEN-MVP.md),
+[Windows-EXE](docs/WINDOWS-EXE.md) und
 [Änderungen](CHANGELOG.md).

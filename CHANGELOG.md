@@ -4,6 +4,15 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.18.0] - 2026-08-26
+
+### Neu
+
+- Eigenständige Windows-EXE ohne separat erforderliche Python-Installation
+- Reproduzierbares PyInstaller-Buildskript per Doppelklick
+- Versionierte Build-Konfiguration und eigene Windows-Anleitung
+- Programmdaten bleiben unabhängig von der EXE unter LocalAppData erhalten
+
 ## [0.17.0] - 2026-08-26
 
 ### Neu
