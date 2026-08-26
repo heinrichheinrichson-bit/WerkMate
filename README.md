@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.22.0 – Drag & Drop und laufend anpassbarer Schichtablauf**
+**Version 0.23.0 – Fortschrittsbalken, Folgealarm und bestätigter Auftragswechsel**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern

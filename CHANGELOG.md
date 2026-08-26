@@ -4,6 +4,20 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.23.0] - 2026-08-26
+
+### Neu
+
+- Waagerechter Zeitfortschrittsbalken für den aktiven Auftrag
+- Frei wählbare neue Endzeit über „Brauche länger“
+- Garantierter erneuter Alarm nach jeder Verlängerung
+- Vollständiges Verlängerungsprotokoll mit alter/neuer Endzeit und Grund
+- Direkte manuell bestätigte Anmeldung des nächsten Planauftrags nach Rückmeldung
+- Kein automatischer Wechsel zwischen Aufträgen
+- Auch laufende und abgebrochene Historieneinträge können sicher storniert werden
+- Laufende Einträge werden beim Verschieben in den Papierkorb zuverlässig beendet
+- Automatische Datenbankmigration auf Schema-Version 10
+
 ## [0.22.0] - 2026-08-26
 
 ### Neu

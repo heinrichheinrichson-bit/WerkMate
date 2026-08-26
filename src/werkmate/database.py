@@ -10,7 +10,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 10
 
 
 class WerkMateDatabase:
@@ -76,6 +76,7 @@ class WerkMateDatabase:
                     planned_seconds INTEGER,
                     note TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'laufend',
+                    voided_previous_status TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -153,6 +154,15 @@ class WerkMateDatabase:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS session_extensions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id INTEGER NOT NULL REFERENCES work_sessions(id),
+                    previous_target_end TEXT NOT NULL,
+                    new_target_end TEXT NOT NULL,
+                    reason TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_sessions_order ON work_sessions(order_id);
                 CREATE INDEX IF NOT EXISTS idx_sessions_reported_start
                     ON work_sessions(reported_started_at);
@@ -183,6 +193,8 @@ class WerkMateDatabase:
                 )
             if "planned_seconds" not in columns:
                 connection.execute("ALTER TABLE work_sessions ADD COLUMN planned_seconds INTEGER")
+            if "voided_previous_status" not in columns:
+                connection.execute("ALTER TABLE work_sessions ADD COLUMN voided_previous_status TEXT")
             order_columns = {
                 row["name"] for row in connection.execute("PRAGMA table_info(orders)").fetchall()
             }
@@ -619,6 +631,39 @@ class WerkMateDatabase:
                 (now, session_id),
             )
 
+    def extend_session(self, session_id: int, *, new_target_end: datetime, reason: str = "") -> None:
+        session = self.get_session(session_id)
+        if session is None or session["status"] not in ("laufend", "sollzeit_erreicht", "ueberzogen"):
+            raise ValueError("Nur ein laufender Arbeitseinsatz kann verlängert werden.")
+        previous = datetime.fromisoformat(str(session["target_end"]))
+        now_local = datetime.now().astimezone().replace(tzinfo=None)
+        if new_target_end <= now_local:
+            raise ValueError("Die neue Endzeit muss in der Zukunft liegen.")
+        if new_target_end <= previous:
+            raise ValueError("Die neue Endzeit muss nach der bisherigen Endzeit liegen.")
+        now = self._now()
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE work_sessions SET target_end = ?, updated_at = ? WHERE id = ?",
+                (new_target_end.isoformat(), now, session_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO session_extensions(
+                    session_id, previous_target_end, new_target_end, reason, created_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (session_id, previous.isoformat(), new_target_end.isoformat(), reason.strip(), now),
+            )
+
+    def session_extensions(self, session_id: int) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM session_extensions WHERE session_id = ? ORDER BY id",
+                (session_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def update_field(
         self,
         entity_type: str,
@@ -811,6 +856,9 @@ class WerkMateDatabase:
             connection.execute("DELETE FROM shift_plan_items WHERE order_id = ?", (order_id,))
             for session_id in session_ids:
                 connection.execute(
+                    "DELETE FROM session_extensions WHERE session_id = ?", (session_id,)
+                )
+                connection.execute(
                     "DELETE FROM correction_log WHERE entity_type = 'session' AND entity_id = ?",
                     (session_id,),
                 )
@@ -823,11 +871,33 @@ class WerkMateDatabase:
 
     def void_session(self, session_id: int, *, reason: str) -> None:
         session = self.get_session(session_id)
-        if session is None or session["status"] != "abgeschlossen":
-            raise ValueError("Nur abgeschlossene Rückmeldungen können storniert werden.")
+        if session is None or session["status"] == "storniert":
+            raise ValueError("Diese Rückmeldung kann nicht storniert werden.")
         if not reason.strip():
             raise ValueError("Bitte einen Stornierungsgrund angeben.")
-        self.update_field("session", session_id, "status", "storniert", reason=reason)
+        previous_status = str(session["status"])
+        safe_previous = "abgebrochen" if previous_status in ("laufend", "sollzeit_erreicht", "ueberzogen") else previous_status
+        now = self._now()
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE work_sessions SET status = 'storniert', voided_previous_status = ?, "
+                "updated_at = ? WHERE id = ?",
+                (safe_previous, now, session_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO correction_log(
+                    entity_type, entity_id, field_name, old_value, new_value, reason, changed_at
+                ) VALUES ('session', ?, 'status', ?, ?, ?, ?)
+                """,
+                (session_id, json.dumps(previous_status), json.dumps("storniert"), reason.strip(), now),
+            )
+            if previous_status in ("laufend", "sollzeit_erreicht", "ueberzogen"):
+                connection.execute(
+                    "UPDATE shift_plan_items SET status = 'offen', session_id = NULL, updated_at = ? "
+                    "WHERE session_id = ?",
+                    (now, session_id),
+                )
         self._sync_order_status(int(session["order_id"]))
 
     def restore_voided_session(self, session_id: int) -> None:
@@ -839,7 +909,10 @@ class WerkMateDatabase:
             raise ValueError("Auftrag nicht gefunden.")
         if int(order["completed_quantity"]) + int(session["completed_quantity"] or 0) > int(order["original_quantity"]):
             raise ValueError("Die Wiederherstellung würde die Auftragsmenge überschreiten.")
-        self.update_field("session", session_id, "status", "abgeschlossen", reason="Stornierung aufgehoben")
+        restored_status = str(session.get("voided_previous_status") or "abgeschlossen")
+        self.update_field(
+            "session", session_id, "status", restored_status, reason="Stornierung aufgehoben"
+        )
         self._sync_order_status(int(session["order_id"]))
 
     def permanently_delete_voided_session(self, session_id: int) -> None:
@@ -848,6 +921,7 @@ class WerkMateDatabase:
             raise ValueError("Nur stornierte Rückmeldungen können endgültig gelöscht werden.")
         with self.connect() as connection:
             connection.execute("DELETE FROM shift_plan_items WHERE session_id = ?", (session_id,))
+            connection.execute("DELETE FROM session_extensions WHERE session_id = ?", (session_id,))
             connection.execute(
                 "DELETE FROM correction_log WHERE entity_type = 'session' AND entity_id = ?",
                 (session_id,),

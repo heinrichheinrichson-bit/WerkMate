@@ -1,4 +1,4 @@
-# WerkMate 0.22.0 – Anleitung
+# WerkMate 0.23.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -162,6 +162,12 @@ Erreichen der Sollzeit ertönt ein Signal und ein Warnfenster erscheint. Der
 Arbeitseinsatz endet nicht automatisch. Die Überziehungszeit läuft weiter, bis
 du bewusst rückmeldest.
 
+Der waagerechte Balken zeigt den zeitlichen Fortschritt. Nach Ablauf beginnt die
+rote Pluszeit. Über **Brauche länger / neue Endzeit setzen** kann eine konkrete
+spätere Endzeit eingetragen werden. Bis dorthin läuft ein neuer Countdown und
+anschließend ertönt erneut ein Alarm. Jede Verlängerung bleibt mit vorheriger
+und neuer Endzeit sowie optionalem Grund gespeichert.
+
 Wichtig: Version 0.4.0 besitzt noch keine zuverlässige Windows-, Android- oder
 iOS-Hintergrundbenachrichtigung. Das Warnfenster funktioniert nur, während das
 Programm geöffnet ist.
@@ -275,6 +281,10 @@ Rückmeldung verwendet WerkMate die tatsächliche Abmeldezeit automatisch als
 Beginn des Restplans. Alle folgenden Startzeiten, Stückzahlen und Überzeiten
 werden neu berechnet. Der Restplan bleibt auch nach dem Schließen erhalten.
 
+Nach der Rückmeldung fragt WerkMate, ob der aktualisierte nächste Planauftrag
+jetzt angemeldet und gestartet werden soll. Erst nach dieser manuellen
+Bestätigung beginnt sein Countdown.
+
 Der berechnete Ablauf erscheint als verbundene Kartenfolge. Jede Karte zeigt
 Auftrag, Gesenk/AG, Start, Ende, Stückzahl und Dauer. Oberhalb stehen sowohl die
 gesamte Uhrzeit des Ablaufs als auch die reine produktive Vorgabezeit.
@@ -292,6 +302,11 @@ kannst du ihn mit korrigierter Menge, Zeit oder Schicht neu starten.
 
 Der abgebrochene Einsatz bleibt mit Status `abgebrochen` in der Historie, damit
 keine Daten unbemerkt verschwinden.
+
+Falls er nicht aufbewahrt werden soll, kann auch ein laufender oder abgebrochener
+Historieneintrag über **Stornieren** in den Papierkorb verschoben werden. Ein
+laufender Einsatz wird dabei sicher beendet und kann nicht im Hintergrund
+weiterlaufen.
 
 ## 11. Einen Restauftrag später fortsetzen
 

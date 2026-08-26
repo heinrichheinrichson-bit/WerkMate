@@ -348,6 +348,30 @@ def test_voided_report_is_hidden_reversible_and_excluded_from_totals(database) -
     assert database.history()[0]["status"] == "abgeschlossen"
 
 
+def test_running_and_cancelled_history_entries_can_be_moved_to_trash(database) -> None:
+    order_id = create_order(database)
+    start = datetime(2026, 8, 26, 6)
+    running_id = database.start_session(
+        order_id=order_id, shift_name="Schicht 1", quantity_to_process=2,
+        seconds_per_piece=1200, actual_started_at=start, reported_started_at=start,
+        target_end=start + timedelta(minutes=40), pause_seconds=0,
+    )
+    database.void_session(running_id, reason="Teststart löschen")
+    assert database.active_session() is None
+    assert database.get_session(running_id)["status"] == "storniert"
+    database.restore_voided_session(running_id)
+    assert database.get_session(running_id)["status"] == "abgebrochen"
+
+    cancelled_id = database.start_session(
+        order_id=order_id, shift_name="Schicht 1", quantity_to_process=2,
+        seconds_per_piece=1200, actual_started_at=start, reported_started_at=start,
+        target_end=start + timedelta(minutes=40), pause_seconds=0,
+    )
+    database.cancel_session(cancelled_id)
+    database.void_session(cancelled_id, reason="Abbruch aus Historie entfernen")
+    assert database.get_session(cancelled_id)["status"] == "storniert"
+
+
 def test_quick_order_number_can_be_completed_later(database) -> None:
     order_id = create_order(database)
     database.update_order(
@@ -357,3 +381,22 @@ def test_quick_order_number_can_be_completed_later(database) -> None:
     order = database.get_order(order_id)
     assert order["order_number"] == "ECHTE-4711"
     assert order["die_number"] == "9999"
+
+
+def test_active_session_can_be_extended_repeatedly_with_audit(database) -> None:
+    order_id = create_order(database)
+    now = datetime.now().astimezone().replace(tzinfo=None)
+    session_id = database.start_session(
+        order_id=order_id, shift_name="Schicht 1", quantity_to_process=2,
+        seconds_per_piece=600, actual_started_at=now, reported_started_at=now,
+        target_end=now + timedelta(minutes=20), pause_seconds=0,
+    )
+    first = now + timedelta(minutes=35)
+    second = now + timedelta(minutes=50)
+    database.extend_session(session_id, new_target_end=first, reason="Störung")
+    database.extend_session(session_id, new_target_end=second, reason="Nacharbeit")
+    session = database.get_session(session_id)
+    extensions = database.session_extensions(session_id)
+    assert session["target_end"] == second.isoformat()
+    assert [item["reason"] for item in extensions] == ["Störung", "Nacharbeit"]
+    assert extensions[0]["previous_target_end"] == (now + timedelta(minutes=20)).isoformat()

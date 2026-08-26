@@ -142,8 +142,15 @@ class WerkMateApp(tk.Tk):
         self.countdown_caption.pack()
         self.countdown = ttk.Label(self.dashboard_tab, text="--:--:--", style="Countdown.TLabel")
         self.countdown.pack(pady=(4, 18))
+        self.work_progress = ttk.Progressbar(self.dashboard_tab, maximum=100, mode="determinate")
+        self.work_progress.pack(fill="x", padx=80, pady=(0, 10))
         self.target_label = ttk.Label(self.dashboard_tab, text="")
         self.target_label.pack()
+        self.extend_work_button = ttk.Button(
+            self.dashboard_tab, text="Brauche länger / neue Endzeit setzen",
+            command=self.extend_active_session,
+        )
+        self.extend_work_button.pack(pady=(8, 0))
         self.forecast_label = ttk.Label(self.dashboard_tab, text="", justify="center")
         self.forecast_label.pack(pady=18)
         self.order_remaining_label = ttk.Label(
@@ -1680,11 +1687,12 @@ class WerkMateApp(tk.Tk):
             next_item = self.shift_plan_results[0] if self.shift_plan_results else None
             next_text = (
                 f"\n\nNächster Planpunkt: {next_item['order_number']} ab "
-                f"{next_item['planned_start']:%H:%M}.\nZum aktualisierten Schichtplan wechseln?"
+                f"{next_item['planned_start']:%H:%M}.\nDiesen Auftrag jetzt verbindlich anmelden und starten?"
                 if next_item else "\n\nIm Schichtplan ist noch ein weiterer Auftrag vorgemerkt."
             )
             if messagebox.askyesno(title, message + next_text, parent=self):
                 self.tabs.select(self.plan_tab)
+                self.start_first_shift_plan_item()
             return
         messagebox.showinfo(title, message, parent=self)
 
@@ -1707,6 +1715,47 @@ class WerkMateApp(tk.Tk):
         self.load_persisted_shift_plan()
         self.refresh_all()
         self.tabs.select(self.plan_tab if self.shift_plan_items else self.orders_tab)
+
+    def extend_active_session(self) -> None:
+        session = self.database.active_session()
+        if session is None:
+            return
+        dialog = tk.Toplevel(self)
+        dialog.title("Neue Endzeit setzen")
+        dialog.transient(self); dialog.grab_set(); dialog.resizable(False, False)
+        body = ttk.Frame(dialog, padding=16); body.pack(fill="both", expand=True)
+        previous = datetime.fromisoformat(session["target_end"])
+        proposed = max(local_now() + timedelta(minutes=15), previous + timedelta(minutes=15))
+        ttk.Label(body, text=f"Bisherige Endzeit: {previous:%d.%m.%Y %H:%M}").grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 10)
+        )
+        ttk.Label(body, text="Neue Endzeit:").grid(row=1, column=0, sticky="w", pady=5)
+        end_entry = ttk.Entry(body, width=24); end_entry.insert(0, proposed.strftime("%Y-%m-%d %H:%M"))
+        end_entry.grid(row=1, column=1, padx=(12, 0), pady=5)
+        ttk.Label(body, text="Grund (optional):").grid(row=2, column=0, sticky="w", pady=5)
+        reason_entry = ttk.Entry(body, width=32); reason_entry.grid(row=2, column=1, padx=(12, 0), pady=5)
+        ttk.Label(
+            body,
+            text="Zur neuen Endzeit ertönt der Alarm erneut. Weitere Verlängerungen bleiben möglich.",
+            style="Muted.TLabel",
+        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 4))
+
+        def save() -> None:
+            try:
+                self.database.extend_session(
+                    int(session["id"]), new_target_end=parse_datetime(end_entry.get()),
+                    reason=reason_entry.get(),
+                )
+            except ValueError as error:
+                messagebox.showerror("Endzeit nicht geändert", str(error), parent=dialog); return
+            self.notified_session_id = None
+            dialog.destroy()
+            self.load_persisted_shift_plan()
+            self.refresh_all()
+
+        ttk.Button(body, text="NEUE ENDZEIT ÜBERNEHMEN", style="Primary.TButton", command=save).grid(
+            row=4, column=0, columnspan=2, sticky="ew", pady=(10, 0)
+        )
 
     def refresh_orders(self) -> None:
         self.orders_tree.delete(*self.orders_tree.get_children())
@@ -1742,11 +1791,14 @@ class WerkMateApp(tk.Tk):
             self.countdown_caption.configure(text="")
             self.countdown.configure(text="--:--:--", style="Countdown.TLabel")
             self.target_label.configure(text="")
+            self.work_progress.configure(value=0)
+            self.extend_work_button.configure(state="disabled")
             self.forecast_label.configure(text="")
             self.order_remaining_label.configure(text="")
             self.cancel_work_button.configure(state="disabled")
             return
         self.cancel_work_button.configure(state="normal")
+        self.extend_work_button.configure(state="normal")
 
         is_credit = status.get("session_kind") == "credit"
         self.finish_actual_label.configure(
@@ -1783,12 +1835,19 @@ class WerkMateApp(tk.Tk):
             text=("+" if overdue else "") + format_duration(status["time_seconds"]),
             style="Danger.TLabel" if overdue else "Countdown.TLabel",
         )
+        started = datetime.fromisoformat(status["reported_started_at"])
+        target = datetime.fromisoformat(status["target_end"])
+        total_clock_seconds = max((target - started).total_seconds(), 1)
+        elapsed_clock_seconds = max((datetime.now().astimezone().replace(tzinfo=None) - started).total_seconds(), 0)
+        self.work_progress.configure(value=min(elapsed_clock_seconds / total_clock_seconds * 100, 100))
+        extensions = self.database.session_extensions(int(status["id"]))
         self.target_label.configure(
             text=(
                 f"Geplante Abmeldezeit für {format_duration(status['credit_planned_seconds'])} Guthabenzeit: "
                 if is_credit else
                 f"Geplante Rückmeldezeit für {status['quantity_to_process']} Stück: "
             ) + f"{display_time(status['target_end'])}"
+            + (f" · {len(extensions)}× verlängert" if extensions else "")
         )
         if is_credit:
             self.forecast_label.configure(
@@ -1925,6 +1984,7 @@ class WerkMateApp(tk.Tk):
         except ValueError as error:
             messagebox.showerror("Stornierung nicht möglich", str(error), parent=self)
             return
+        self.load_persisted_shift_plan()
         self.refresh_all()
 
     def open_history_trash(self) -> None:
