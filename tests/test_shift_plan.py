@@ -69,3 +69,52 @@ def test_credit_block_can_precede_new_work(tmp_path) -> None:
     # Noch 342 produktive Minuten nach Abzug der festen Pause.
     assert plan[1]["piece_equivalent"] == Decimal("17.1")
     assert plan[1]["quantity"] == 17
+
+
+def test_saved_plan_survives_restart_and_advances_from_actual_report_time(tmp_path) -> None:
+    path = tmp_path / "db.sqlite3"
+    database = WerkMateDatabase(path)
+    service = WerkMateService(database)
+    first = service.create_order(
+        order_number="ERST", die_number="8720", operation="FP",
+        original_quantity=12, seconds_per_piece=20 * 60,
+    )
+    second = service.create_order(
+        order_number="DANACH", die_number="4261", operation="FP",
+        original_quantity=40, seconds_per_piece=15 * 60,
+    )
+    database.save_shift_plan(
+        reported_start=datetime(2026, 8, 26, 5, 45),
+        shift_number=1,
+        items=[
+            {"order_id": first, "mode": "work_fixed", "value": 12},
+            {"order_id": second, "mode": "work_fill", "value": None},
+        ],
+    )
+
+    reopened = WerkMateDatabase(path)
+    saved = reopened.active_shift_plan()
+    assert saved is not None
+    assert [item["order_number"] for item in saved["items"]] == ["ERST", "DANACH"]
+
+    session_id = WerkMateService(reopened).start_work(
+        order_id=first, quantity=12,
+        reported_start=datetime(2026, 8, 26, 5, 45), shift_number=1,
+    )
+    reopened.link_shift_plan_session(saved["items"][0]["id"], session_id)
+    WerkMateService(reopened).finish_work(
+        session_id, completed_quantity=12, reported_quantity=12,
+        reported_end=datetime(2026, 8, 26, 10, 18),
+    )
+
+    advanced = reopened.active_shift_plan()
+    assert advanced is not None
+    assert advanced["reported_start"] == datetime(2026, 8, 26, 10, 18).isoformat()
+    assert advanced["items"][0]["status"] == "erledigt"
+    remaining = WerkMateService(reopened).plan_sequence(
+        items=[advanced["items"][1]],
+        reported_start=datetime.fromisoformat(advanced["reported_start"]),
+        shift_number=advanced["shift_number"],
+    )
+    assert remaining[0]["planned_start"] == datetime(2026, 8, 26, 10, 18)
+    assert remaining[0]["quantity"] == 13

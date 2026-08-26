@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.12.1 – vereinfachte Katalogeingabe und verkettete Schichtplanung**
+**Version 0.13.0 – dauerhaft gespeicherte und fortsetzbare Schichtpläne**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern

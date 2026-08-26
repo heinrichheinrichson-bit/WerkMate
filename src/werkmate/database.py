@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class WerkMateDatabase:
@@ -119,12 +119,36 @@ class WerkMateDatabase:
                     UNIQUE(die_id, operation_id)
                 );
 
+                CREATE TABLE IF NOT EXISTS shift_plans (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    reported_start TEXT NOT NULL,
+                    shift_number INTEGER NOT NULL CHECK(shift_number BETWEEN 1 AND 3),
+                    status TEXT NOT NULL DEFAULT 'aktiv',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS shift_plan_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    plan_id INTEGER NOT NULL REFERENCES shift_plans(id) ON DELETE CASCADE,
+                    position INTEGER NOT NULL,
+                    order_id INTEGER NOT NULL REFERENCES orders(id),
+                    mode TEXT NOT NULL,
+                    value INTEGER,
+                    status TEXT NOT NULL DEFAULT 'offen',
+                    session_id INTEGER REFERENCES work_sessions(id),
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_sessions_order ON work_sessions(order_id);
                 CREATE INDEX IF NOT EXISTS idx_sessions_reported_start
                     ON work_sessions(reported_started_at);
                 CREATE INDEX IF NOT EXISTS idx_corrections_entity
                     ON correction_log(entity_type, entity_id);
                 CREATE INDEX IF NOT EXISTS idx_standards_die ON standards(die_id);
+                CREATE INDEX IF NOT EXISTS idx_shift_plan_items_plan
+                    ON shift_plan_items(plan_id, position);
                 """
             )
             columns = {
@@ -150,6 +174,87 @@ class WerkMateDatabase:
             connection.execute(
                 "INSERT OR REPLACE INTO metadata(key, value) VALUES('schema_version', ?)",
                 (str(SCHEMA_VERSION),),
+            )
+
+    def save_shift_plan(
+        self, *, reported_start: datetime, shift_number: int, items: list[dict[str, Any]]
+    ) -> int:
+        if not items:
+            raise ValueError("Der Schichtplan enthält keine Aufträge.")
+        if shift_number not in (1, 2, 3):
+            raise ValueError("Ungültige Schichtnummer.")
+        now = self._now()
+        with self.connect() as connection:
+            running = connection.execute(
+                """
+                SELECT COUNT(*) AS amount
+                FROM shift_plan_items spi JOIN shift_plans sp ON sp.id = spi.plan_id
+                WHERE sp.status = 'aktiv' AND spi.status = 'laufend'
+                """
+            ).fetchone()["amount"]
+            if running:
+                raise ValueError(
+                    "Während eines laufenden Planpunkts kann der Schichtplan nicht ersetzt werden."
+                )
+            connection.execute(
+                "UPDATE shift_plans SET status = 'ersetzt', updated_at = ? WHERE status = 'aktiv'",
+                (now,),
+            )
+            cursor = connection.execute(
+                "INSERT INTO shift_plans(reported_start, shift_number, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?)",
+                (reported_start.isoformat(), shift_number, now, now),
+            )
+            plan_id = int(cursor.lastrowid)
+            for position, item in enumerate(items, start=1):
+                connection.execute(
+                    """
+                    INSERT INTO shift_plan_items(
+                        plan_id, position, order_id, mode, value, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        plan_id, position, int(item["order_id"]), str(item["mode"]),
+                        item.get("value"), now, now,
+                    ),
+                )
+        return plan_id
+
+    def active_shift_plan(self) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            plan = connection.execute(
+                "SELECT * FROM shift_plans WHERE status = 'aktiv' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if plan is None:
+                return None
+            rows = connection.execute(
+                """
+                SELECT spi.*, o.order_number, o.die_number, o.operation
+                FROM shift_plan_items spi JOIN orders o ON o.id = spi.order_id
+                WHERE spi.plan_id = ? ORDER BY spi.position
+                """,
+                (plan["id"],),
+            ).fetchall()
+        result = dict(plan)
+        result["items"] = [dict(row) for row in rows]
+        return result
+
+    def link_shift_plan_session(self, item_id: int, session_id: int) -> None:
+        now = self._now()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE shift_plan_items SET status = 'laufend', session_id = ?, updated_at = ? "
+                "WHERE id = ? AND status = 'offen'",
+                (session_id, now, item_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Der Planpunkt ist nicht mehr offen.")
+
+    def discard_shift_plan(self) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE shift_plans SET status = 'verworfen', updated_at = ? WHERE status = 'aktiv'",
+                (self._now(),),
             )
 
     @staticmethod
@@ -351,6 +456,29 @@ class WerkMateDatabase:
                 "UPDATE orders SET status = ?, updated_at = ? WHERE id = ?",
                 (status, now, session["order_id"]),
             )
+            plan_item = connection.execute(
+                "SELECT id, plan_id FROM shift_plan_items WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            if plan_item is not None:
+                connection.execute(
+                    "UPDATE shift_plan_items SET status = 'erledigt', updated_at = ? WHERE id = ?",
+                    (now, plan_item["id"]),
+                )
+                remaining = connection.execute(
+                    "SELECT COUNT(*) AS amount FROM shift_plan_items "
+                    "WHERE plan_id = ? AND status IN ('offen', 'laufend')",
+                    (plan_item["plan_id"],),
+                ).fetchone()["amount"]
+                connection.execute(
+                    "UPDATE shift_plans SET reported_start = ?, status = ?, updated_at = ? WHERE id = ?",
+                    (
+                        reported_ended_at.isoformat(),
+                        "aktiv" if remaining else "abgeschlossen",
+                        now,
+                        plan_item["plan_id"],
+                    ),
+                )
 
     def cancel_session(self, session_id: int, *, reason: str = "Fehlstart") -> None:
         session = self.get_session(session_id)
@@ -368,6 +496,11 @@ class WerkMateDatabase:
                 WHERE id = ?
                 """,
                 (now, reason.strip(), now, session_id),
+            )
+            connection.execute(
+                "UPDATE shift_plan_items SET status = 'offen', session_id = NULL, updated_at = ? "
+                "WHERE session_id = ?",
+                (now, session_id),
             )
 
     def update_field(

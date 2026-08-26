@@ -4,6 +4,17 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.13.0] - 2026-08-26
+
+### Neu
+
+- Schichtpläne werden dauerhaft in der lokalen SQLite-Datenbank gespeichert
+- Restpläne werden nach einem Neustart automatisch geladen
+- Folgende Planpunkte werden ab der tatsächlichen Rückmeldezeit neu berechnet
+- Nach einer Rückmeldung wird der nächste aktualisierte Planpunkt angeboten
+- Abgebrochene Fehlstarts werden wieder in den offenen Plan zurückgelegt
+- Automatische Datenbankmigration auf Schema-Version 5
+
 ## [0.12.1] - 2026-08-26
 
 ### Geändert

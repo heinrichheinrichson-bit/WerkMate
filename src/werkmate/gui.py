@@ -64,6 +64,7 @@ class WerkMateApp(tk.Tk):
 
         self._configure_style()
         self._build_ui()
+        self.load_persisted_shift_plan()
         self.refresh_all()
         self.after(1_000, self._tick)
 
@@ -396,6 +397,8 @@ class WerkMateApp(tk.Tk):
         ttk.Button(queue_buttons, text="Plan leeren", command=self.clear_shift_plan).pack(
             side="left", padx=6
         )
+        self.plan_saved_label = ttk.Label(queue_buttons, text="", style="Muted.TLabel")
+        self.plan_saved_label.pack(side="left", padx=8)
         ttk.Button(
             queue_buttons, text="SCHICHT BERECHNEN", style="Primary.TButton",
             command=self.calculate_shift_plan,
@@ -491,10 +494,12 @@ class WerkMateApp(tk.Tk):
     def clear_shift_plan(self) -> None:
         self.shift_plan_items.clear()
         self.shift_plan_results.clear()
+        self.database.discard_shift_plan()
+        self.plan_saved_label.configure(text="")
         self.refresh_shift_plan_queue()
         self.plan_result_tree.delete(*self.plan_result_tree.get_children())
 
-    def calculate_shift_plan(self) -> None:
+    def calculate_shift_plan(self, persist: bool = True) -> None:
         self.shift_plan_results = []
         try:
             self.shift_plan_results = self.service.plan_sequence(
@@ -505,6 +510,18 @@ class WerkMateApp(tk.Tk):
         except (ValueError, TypeError) as error:
             messagebox.showerror("Planung nicht möglich", str(error), parent=self)
             return
+        if persist:
+            try:
+                self.database.save_shift_plan(
+                    reported_start=parse_datetime(self.plan_start.get()),
+                    shift_number=int(self.plan_shift.get()),
+                    items=self.shift_plan_items,
+                )
+                self.load_persisted_shift_plan(recalculate=False)
+                self.plan_saved_label.configure(text="✓ lokal gespeichert")
+            except ValueError as error:
+                messagebox.showerror("Plan nicht gespeichert", str(error), parent=self)
+                return
         self.plan_result_tree.delete(*self.plan_result_tree.get_children())
         for item in self.shift_plan_results:
             self.plan_result_tree.insert(
@@ -519,7 +536,9 @@ class WerkMateApp(tk.Tk):
             )
 
     def start_first_shift_plan_item(self) -> None:
-        self.calculate_shift_plan()
+        self.calculate_shift_plan(persist=not bool(
+            self.shift_plan_items and self.shift_plan_items[0].get("plan_item_id")
+        ))
         if not self.shift_plan_results:
             return
         item = self.shift_plan_results[0]
@@ -540,10 +559,15 @@ class WerkMateApp(tk.Tk):
                         shift_number=int(self.plan_shift.get()), quantity=item["quantity"],
                     )
             else:
-                self.service.start_work(
+                session_id = self.service.start_work(
                     order_id=item["order_id"], quantity=item["quantity"],
                     reported_start=item["planned_start"], shift_number=int(self.plan_shift.get()),
                 )
+            if item["kind"] == "credit":
+                session_id = int(self.database.active_session()["id"])
+            self.database.link_shift_plan_session(
+                int(self.shift_plan_items[0]["plan_item_id"]), int(session_id)
+            )
         except ValueError as error:
             messagebox.showerror("Start nicht möglich", str(error), parent=self)
             return
@@ -553,6 +577,41 @@ class WerkMateApp(tk.Tk):
         self.notified_session_id = None
         self.refresh_all()
         self.tabs.select(self.dashboard_tab)
+
+    def load_persisted_shift_plan(self, *, recalculate: bool = True) -> None:
+        plan = self.database.active_shift_plan()
+        if plan is None:
+            return
+        labels = {
+            "work_fixed": "Offene Stück fest",
+            "work_fill": "Restschicht mit Auftrag füllen",
+            "credit_quantity": "Guthaben nach Stück",
+            "credit_time": "Guthaben nach Minuten",
+        }
+        self.shift_plan_items = []
+        for saved in plan["items"]:
+            if saved["status"] != "offen":
+                continue
+            order = self.database.get_order(int(saved["order_id"]))
+            if order is None:
+                continue
+            self.shift_plan_items.append({
+                "plan_item_id": int(saved["id"]),
+                "order_id": int(saved["order_id"]),
+                "mode": saved["mode"],
+                "value": saved["value"],
+                "label": labels[saved["mode"]],
+                "order": order,
+            })
+        self._set_entry(
+            self.plan_start,
+            datetime.fromisoformat(plan["reported_start"]).strftime("%Y-%m-%d %H:%M"),
+        )
+        self.plan_shift.set(str(plan["shift_number"]))
+        self.refresh_shift_plan_queue()
+        self.plan_saved_label.configure(text="✓ gespeicherten Plan geladen")
+        if recalculate and self.shift_plan_items and self.database.active_session() is None:
+            self.calculate_shift_plan(persist=False)
 
     def _refresh_quick_dies(self) -> None:
         dies = sorted({item["die_number"] for item in self.database.list_catalog()})
@@ -1156,11 +1215,11 @@ class WerkMateApp(tk.Tk):
         self.finish_quantity.delete(0, tk.END)
         self.finish_reported_quantity.delete(0, tk.END)
         self.finish_note.delete(0, tk.END)
+        self.load_persisted_shift_plan()
         self.refresh_all()
-        messagebox.showinfo(
+        self._show_finished_and_offer_next(
             "Rückmeldung gespeichert",
             "Bearbeitete und betrieblich rückgemeldete Stück wurden getrennt gespeichert.",
-            parent=self,
         )
 
     def finish_entire_order(self) -> None:
@@ -1212,13 +1271,26 @@ class WerkMateApp(tk.Tk):
         self.finish_quantity.delete(0, tk.END)
         self.finish_reported_quantity.delete(0, tk.END)
         self.finish_note.delete(0, tk.END)
+        self.load_persisted_shift_plan()
         self.refresh_all()
-        messagebox.showinfo(
+        self._show_finished_and_offer_next(
             "Auftrag vollständig beendet",
             f"Alle {completed} noch offenen Stück wurden als bearbeitet gespeichert. "
             f"Heute rückgemeldet: {reported_quantity} Stück.",
-            parent=self,
         )
+
+    def _show_finished_and_offer_next(self, title: str, message: str) -> None:
+        if self.shift_plan_items:
+            next_item = self.shift_plan_results[0] if self.shift_plan_results else None
+            next_text = (
+                f"\n\nNächster Planpunkt: {next_item['order_number']} ab "
+                f"{next_item['planned_start']:%H:%M}.\nZum aktualisierten Schichtplan wechseln?"
+                if next_item else "\n\nIm Schichtplan ist noch ein weiterer Auftrag vorgemerkt."
+            )
+            if messagebox.askyesno(title, message + next_text, parent=self):
+                self.tabs.select(self.plan_tab)
+            return
+        messagebox.showinfo(title, message, parent=self)
 
     def cancel_active(self) -> None:
         session = self.database.active_session()
@@ -1236,8 +1308,9 @@ class WerkMateApp(tk.Tk):
         except ValueError as error:
             messagebox.showerror("Abbruch nicht möglich", str(error), parent=self)
             return
+        self.load_persisted_shift_plan()
         self.refresh_all()
-        self.tabs.select(self.orders_tab)
+        self.tabs.select(self.plan_tab if self.shift_plan_items else self.orders_tab)
 
     def refresh_orders(self) -> None:
         self.orders_tree.delete(*self.orders_tree.get_children())

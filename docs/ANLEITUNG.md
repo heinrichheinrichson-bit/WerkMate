@@ -1,4 +1,4 @@
-# WerkMate 0.12.1 – Anleitung
+# WerkMate 0.13.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -234,7 +234,9 @@ Stückzahl. Guthaben kann beliebig über mehrere Tage verteilt werden.
 ## 9. Mehrere Aufträge zu einem Schichtplan verbinden
 
 Im Reiter **Schichtplan** können Arbeits- und Guthabenblöcke in einer festen
-Reihenfolge kombiniert werden. Für jeden Planpunkt stehen vier Arten bereit:
+Reihenfolge kombiniert werden. Mit **SCHICHT BERECHNEN** wird der Plan zugleich
+lokal gespeichert und beim nächsten Programmstart automatisch wieder geladen.
+Für jeden Planpunkt stehen vier Arten bereit:
 
 - **Offene Stück fest:** Eine vorgegebene Restmenge vollständig einplanen.
 - **Restschicht mit Auftrag füllen:** So viele vollständige Stück berechnen, wie
@@ -257,10 +259,10 @@ und mögliche Überzeit. Im Beispiel mit 20 min/Stück für 8720 ergibt sich:
 - 4261: verbleibende 222 produktive Minuten, rechnerisch 14,8 Stück
 - 4261: 14 Stück vollständig, geplantes Ende 13:33
 
-Mit **Ersten Planpunkt starten** wird der erste Block übernommen. Danach bleibt
-die restliche Reihenfolge in der geöffneten App erhalten. Weicht die tatsächliche
-Rückmeldung vom Plan ab, kann die Startzeit des verbleibenden Plans angepasst
-und neu berechnet werden.
+Mit **Ersten Planpunkt starten** wird der erste Block übernommen. Nach seiner
+Rückmeldung verwendet WerkMate die tatsächliche Abmeldezeit automatisch als
+Beginn des Restplans. Alle folgenden Startzeiten, Stückzahlen und Überzeiten
+werden neu berechnet. Der Restplan bleibt auch nach dem Schließen erhalten.
 
 ## 10. Einen versehentlich gestarteten Einsatz abbrechen
 
@@ -369,7 +371,7 @@ ist für eine spätere Version vorgesehen.
 - keine zuverlässige Benachrichtigung bei geschlossenem Programm
 - noch keine Wiederherstellung einer Sicherung direkt in der Oberfläche
 - Arbeitseinsätze können noch nicht nachträglich in der Oberfläche korrigiert werden
-- noch nicht gestartete Schichtplan-Reihenfolgen bleiben nur erhalten, solange WerkMate geöffnet ist
+- Schichten und Pausen sind derzeit noch fest im Programm hinterlegt
 - keine Statistiken und Exporte
 
 Der Rechenkern, die lokale Speicherung und der grundlegende persönliche Ablauf
