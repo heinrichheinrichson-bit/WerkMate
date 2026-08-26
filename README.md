@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.3.0 – bedienbarer lokaler Konsolen-MVP**
+**Version 0.4.0 – grafischer lokaler PC-Prototyp**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern
@@ -21,6 +21,7 @@ py -m venv .venv
 python -m pip install -e ".[dev]"
 pytest
 werkmate --help
+werkmate-gui
 ```
 
 WerkMate benötigt für den Rechenkern keine Internetverbindung und keine Cloud.
@@ -34,6 +35,10 @@ Das Projekt verwendet [Semantic Versioning](https://semver.org/):
 - `0.3.x`: bedienbarer lokaler MVP
 - `1.0.0`: erster stabiler mobiler Alltagsstand
 
-Siehe [MVP-Spezifikation](docs/MVP-SPEZIFIKATION.md),
+Zum direkten Ausprobieren unter Windows kann außerdem `WerkMate starten.bat`
+im Projektordner doppelt angeklickt werden.
+
+Siehe [Anleitung](docs/ANLEITUNG.md),
+[MVP-Spezifikation](docs/MVP-SPEZIFIKATION.md),
 [Konsolen-MVP ausprobieren](docs/KONSOLEN-MVP.md) und
 [Änderungen](CHANGELOG.md).

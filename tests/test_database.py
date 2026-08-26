@@ -145,3 +145,10 @@ def test_session_cannot_exceed_open_quantity(database) -> None:
             target_end=start + timedelta(minutes=500),
             pause_seconds=0,
         )
+
+
+def test_database_backup_contains_orders(database, tmp_path) -> None:
+    create_order(database)
+    backup_path = database.backup_to(tmp_path / "backup.sqlite3")
+    backup = WerkMateDatabase(backup_path)
+    assert backup.find_order("FA-4711")["die_number"] == "8720"

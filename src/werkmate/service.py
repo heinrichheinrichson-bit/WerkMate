@@ -37,8 +37,12 @@ class WerkMateService:
         seconds_per_piece: int,
         note: str = "",
     ) -> int:
+        if not order_number.strip() or not die_number.strip() or not operation.strip():
+            raise ValueError("Auftragsnummer, Gesenknummer und Arbeitsgang sind Pflichtfelder.")
         if original_quantity <= 0 or seconds_per_piece <= 0:
             raise ValueError("Menge und Vorgabezeit müssen größer als null sein.")
+        if self.database.find_order(order_number) is not None:
+            raise ValueError("Diese Auftragsnummer ist bereits gespeichert.")
         return self.database.create_order(
             order_number=order_number,
             die_number=die_number,
@@ -62,6 +66,8 @@ class WerkMateService:
         order = self.database.get_order(order_id)
         if order is None:
             raise ValueError("Auftrag nicht gefunden.")
+        if order["status"] == "abgegeben":
+            raise ValueError("Dieser Restauftrag wurde aus der persönlichen Nachverfolgung abgegeben.")
         shift = (
             with_custom_shift_end(shift_for_start(shift_number, reported_start), custom_shift_end)
             if shift_number is not None
@@ -134,4 +140,3 @@ class WerkMateService:
             reported_ended_at=reported_end,
             note=note,
         )
-

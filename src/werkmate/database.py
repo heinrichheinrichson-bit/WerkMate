@@ -361,3 +361,16 @@ class WerkMateDatabase:
                 (entity_type, entity_id),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def backup_to(self, destination: str | Path) -> Path:
+        """Erzeugt mit SQLite eine konsistente lokale Sicherungskopie."""
+        destination_path = Path(destination)
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        source = sqlite3.connect(self.path)
+        target = sqlite3.connect(destination_path)
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+            source.close()
+        return destination_path

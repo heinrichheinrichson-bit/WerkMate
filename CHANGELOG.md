@@ -4,6 +4,21 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.4.0] - 2026-08-26
+
+### Hinzugefügt
+
+- Grafische Windows-Testoberfläche mit drei übersichtlichen Bereichen
+- Auftragserfassung und Start eines persönlichen Arbeitseinsatzes
+- sekundengenauer Live-Countdown und rote Überziehungsanzeige
+- Warnfenster beim Erreichen der Sollzeit, solange das Programm geöffnet ist
+- Teilrückmeldung mit frei gewählter Abmeldezeit und Notiz
+- Auftragsliste mit offenen Mengen und persönliche Historie
+- Detailansicht für historische Meldungen
+- Übergabe eines offenen Restauftrags über die Oberfläche
+- Konsistente lokale Datenbanksicherung über einen Dateidialog
+- Windows-Startdatei und ausführliche deutschsprachige Bedienungsanleitung
+
 ## [0.3.0] - 2026-08-26
 
 ### Hinzugefügt

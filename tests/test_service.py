@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 
+import pytest
+
 from werkmate.database import WerkMateDatabase
 from werkmate.service import WerkMateService, shift_for_start
 
@@ -69,3 +71,30 @@ def test_service_reports_overdue_and_finishes_partial_quantity(tmp_path) -> None
     )
     assert database.get_order(order_id)["open_quantity"] == 2
     assert database.active_session() is None
+
+
+def test_duplicate_order_number_is_rejected_cleanly(tmp_path) -> None:
+    service = WerkMateService(WerkMateDatabase(tmp_path / "db.sqlite3"))
+    arguments = dict(
+        order_number="FA-3", die_number="8720", operation="FP1",
+        original_quantity=4, seconds_per_piece=600,
+    )
+    service.create_order(**arguments)
+    with pytest.raises(ValueError, match="bereits"):
+        service.create_order(**arguments)
+
+
+def test_handed_off_order_cannot_be_started_again(tmp_path) -> None:
+    database = WerkMateDatabase(tmp_path / "db.sqlite3")
+    service = WerkMateService(database)
+    order_id = service.create_order(
+        order_number="FA-4", die_number="8720", operation="FP1",
+        original_quantity=4, seconds_per_piece=600,
+    )
+    database.hand_off_order(order_id)
+    with pytest.raises(ValueError, match="abgegeben"):
+        service.start_work(
+            order_id=order_id,
+            quantity=4,
+            reported_start=datetime(2026, 8, 26, 6),
+        )
