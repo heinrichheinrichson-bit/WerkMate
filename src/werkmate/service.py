@@ -436,3 +436,83 @@ class WerkMateService:
             reported_ended_at=reported_end,
             note=note,
         )
+
+    def plan_sequence(
+        self,
+        *,
+        items: list[dict],
+        reported_start: datetime,
+        shift_number: int,
+    ) -> list[dict]:
+        """Plant Arbeits- und Guthabenblöcke lückenlos nacheinander."""
+        if not items:
+            raise ValueError("Der Schichtplan enthält keine Aufträge.")
+        shift = shift_for_start(shift_number, reported_start)
+        cursor = reported_start
+        results: list[dict] = []
+        for position, item in enumerate(items, start=1):
+            order = self.database.get_order(int(item["order_id"]))
+            if order is None:
+                raise ValueError("Ein Auftrag des Schichtplans wurde nicht gefunden.")
+            mode = str(item["mode"])
+            seconds_per_piece = int(order["seconds_per_piece"])
+            value = item.get("value")
+            is_credit = mode.startswith("credit_")
+
+            if mode == "work_fixed":
+                quantity = int(value)
+                if quantity <= 0 or quantity > int(order["open_quantity"]):
+                    raise ValueError("Die feste Arbeitsmenge muss größer als null sein.")
+                productive_seconds = quantity * seconds_per_piece
+                equivalent = Decimal(quantity)
+            elif mode == "work_fill":
+                available = productive_duration_between(cursor, shift.end, shift.breaks)
+                productive_available = max(int(available.total_seconds()), 0)
+                equivalent = min(
+                    Decimal(productive_available) / Decimal(seconds_per_piece),
+                    Decimal(int(order["open_quantity"])),
+                )
+                quantity = min(
+                    productive_available // seconds_per_piece,
+                    int(order["open_quantity"]),
+                )
+                productive_seconds = quantity * seconds_per_piece
+            elif mode == "credit_quantity":
+                quantity = int(value)
+                if quantity <= 0 or quantity > int(order["credit_quantity"]):
+                    raise ValueError("Die Guthabenstückzahl muss größer als null sein.")
+                productive_seconds = quantity * seconds_per_piece
+                equivalent = Decimal(quantity)
+            elif mode == "credit_time":
+                productive_seconds = int(value)
+                if productive_seconds <= 0:
+                    raise ValueError("Die Guthabenzeit muss größer als null sein.")
+                if productive_seconds > int(order["credit_quantity"]) * seconds_per_piece:
+                    raise ValueError("Die Guthabenzeit überschreitet das verfügbare Guthaben.")
+                equivalent = Decimal(productive_seconds) / Decimal(seconds_per_piece)
+                quantity = int(equivalent.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+                quantity = max(1, min(quantity, int(order["credit_quantity"])))
+            else:
+                raise ValueError("Unbekannte Planungsart.")
+
+            end = add_productive_duration(
+                cursor, timedelta(seconds=productive_seconds), shift.breaks
+            )
+            results.append({
+                "position": position,
+                "order_id": int(order["id"]),
+                "order_number": order["order_number"],
+                "die_number": order["die_number"],
+                "operation": order["operation"],
+                "mode": mode,
+                "kind": "credit" if is_credit else "work",
+                "planned_start": cursor,
+                "planned_end": end,
+                "quantity": quantity,
+                "piece_equivalent": equivalent,
+                "productive_seconds": productive_seconds,
+                "overtime_seconds": max(int((end - shift.end).total_seconds()), 0),
+                "shift_end": shift.end,
+            })
+            cursor = end
+        return results

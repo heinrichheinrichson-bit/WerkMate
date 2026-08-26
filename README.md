@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.11.0 – getrennte Bearbeitung, Rückmeldung und mehrtägiges Guthaben**
+**Version 0.12.0 – verkettete Schichtplanung für Aufträge und Guthaben**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern

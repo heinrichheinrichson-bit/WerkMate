@@ -94,17 +94,20 @@ class WerkMateApp(tk.Tk):
         self.tabs.pack(fill="both", expand=True, padx=14, pady=(0, 14))
         self.dashboard_tab = ttk.Frame(self.tabs, padding=18)
         self.quick_tab = ttk.Frame(self.tabs, padding=18)
+        self.plan_tab = ttk.Frame(self.tabs, padding=18)
         self.orders_tab = ttk.Frame(self.tabs, padding=18)
         self.catalog_tab = ttk.Frame(self.tabs, padding=18)
         self.history_tab = ttk.Frame(self.tabs, padding=18)
         self.tabs.add(self.dashboard_tab, text="Laufender Auftrag")
         self.tabs.add(self.quick_tab, text="Schnellstart")
+        self.tabs.add(self.plan_tab, text="Schichtplan")
         self.tabs.add(self.orders_tab, text="Aufträge")
         self.tabs.add(self.catalog_tab, text="Gesenk-Katalog")
         self.tabs.add(self.history_tab, text="Historie")
 
         self._build_dashboard()
         self._build_quick_start()
+        self._build_shift_plan()
         self._build_orders()
         self._build_catalog()
         self._build_history()
@@ -322,6 +325,234 @@ class WerkMateApp(tk.Tk):
             ),
             justify="left",
         ).pack(anchor="w")
+
+    def _build_shift_plan(self) -> None:
+        self.shift_plan_items: list[dict] = []
+        self.shift_plan_results: list[dict] = []
+        ttk.Label(self.plan_tab, text="Aufträge und Guthaben zusammen planen", style="Title.TLabel").pack(
+            anchor="w"
+        )
+        settings = ttk.Frame(self.plan_tab)
+        settings.pack(fill="x", pady=(12, 8))
+        ttk.Label(settings, text="Planstart:").pack(side="left")
+        self.plan_start = ttk.Entry(settings, width=20)
+        self.plan_start.insert(0, local_now().strftime("%Y-%m-%d %H:%M"))
+        self.plan_start.pack(side="left", padx=(6, 16))
+        ttk.Label(settings, text="Schicht:").pack(side="left")
+        self.plan_shift = ttk.Combobox(settings, values=("1", "2", "3"), state="readonly", width=6)
+        self.plan_shift.set(str(current_shift_number(local_now())))
+        self.plan_shift.pack(side="left", padx=6)
+
+        add = ttk.LabelFrame(self.plan_tab, text="Planpunkt hinzufügen", padding=10)
+        add.pack(fill="x")
+        ttk.Label(add, text="Auftrag:").grid(row=0, column=0, sticky="w")
+        self.plan_order = ttk.Combobox(add, state="readonly", width=42)
+        self.plan_order.grid(row=1, column=0, sticky="ew", padx=(0, 8))
+        self.plan_order.bind("<FocusIn>", lambda _event: self.refresh_plan_orders())
+        ttk.Label(add, text="Art:").grid(row=0, column=1, sticky="w")
+        self.plan_mode = ttk.Combobox(
+            add,
+            values=(
+                "Offene Stück fest",
+                "Restschicht mit Auftrag füllen",
+                "Guthaben nach Stück",
+                "Guthaben nach Minuten",
+            ),
+            state="readonly",
+            width=30,
+        )
+        self.plan_mode.set("Offene Stück fest")
+        self.plan_mode.grid(row=1, column=1, sticky="ew", padx=8)
+        ttk.Label(add, text="Stück/Minuten:").grid(row=0, column=2, sticky="w")
+        self.plan_value = ttk.Entry(add, width=15)
+        self.plan_value.grid(row=1, column=2, sticky="ew", padx=8)
+        ttk.Button(add, text="Zum Plan hinzufügen", command=self.add_shift_plan_item).grid(
+            row=1, column=3, sticky="ew", padx=(8, 0)
+        )
+        add.columnconfigure(0, weight=2)
+        add.columnconfigure(1, weight=1)
+
+        queue_frame = ttk.LabelFrame(self.plan_tab, text="Reihenfolge", padding=8)
+        queue_frame.pack(fill="x", pady=10)
+        self.plan_queue = ttk.Treeview(
+            queue_frame,
+            columns=("pos", "order", "die", "mode", "value"),
+            show="headings",
+            height=5,
+        )
+        for column, heading, width in zip(
+            ("pos", "order", "die", "mode", "value"),
+            ("Pos.", "Auftrag", "Gesenk/AG", "Planungsart", "Vorgabe"),
+            (45, 150, 130, 260, 120),
+        ):
+            self.plan_queue.heading(column, text=heading)
+            self.plan_queue.column(column, width=width, anchor="center")
+        self.plan_queue.pack(fill="x")
+        queue_buttons = ttk.Frame(queue_frame)
+        queue_buttons.pack(fill="x", pady=(6, 0))
+        ttk.Button(queue_buttons, text="Ausgewählten entfernen", command=self.remove_shift_plan_item).pack(
+            side="left"
+        )
+        ttk.Button(queue_buttons, text="Plan leeren", command=self.clear_shift_plan).pack(
+            side="left", padx=6
+        )
+        ttk.Button(
+            queue_buttons, text="SCHICHT BERECHNEN", style="Primary.TButton",
+            command=self.calculate_shift_plan,
+        ).pack(side="right")
+
+        result_frame = ttk.LabelFrame(self.plan_tab, text="Berechneter Ablauf", padding=8)
+        result_frame.pack(fill="both", expand=True)
+        columns = ("pos", "order", "kind", "start", "end", "pieces", "equiv", "overtime")
+        self.plan_result_tree = ttk.Treeview(
+            result_frame, columns=columns, show="headings", height=7
+        )
+        for column, heading, width in zip(
+            columns,
+            ("Pos.", "Auftrag", "Art", "Start", "Ende", "ganze Stück", "rechnerisch", "Überzeit"),
+            (45, 140, 90, 120, 120, 95, 100, 100),
+        ):
+            self.plan_result_tree.heading(column, text=heading)
+            self.plan_result_tree.column(column, width=width, anchor="center")
+        self.plan_result_tree.pack(fill="both", expand=True)
+        ttk.Button(
+            result_frame,
+            text="Ersten Planpunkt starten",
+            style="Primary.TButton",
+            command=self.start_first_shift_plan_item,
+        ).pack(fill="x", pady=(8, 0))
+
+    def refresh_plan_orders(self) -> None:
+        self._plan_order_map = {}
+        values = []
+        for order in self.database.list_orders():
+            label = (
+                f"#{order['id']} · {order['order_number']} · {order['die_number']}/{order['operation']} · "
+                f"offen {order['open_quantity']} · Guthaben {order['credit_quantity']}"
+            )
+            values.append(label)
+            self._plan_order_map[label] = order
+        self.plan_order.configure(values=values)
+
+    def add_shift_plan_item(self) -> None:
+        order = getattr(self, "_plan_order_map", {}).get(self.plan_order.get())
+        if order is None:
+            messagebox.showerror("Keine Auswahl", "Bitte einen Auftrag auswählen.", parent=self)
+            return
+        modes = {
+            "Offene Stück fest": "work_fixed",
+            "Restschicht mit Auftrag füllen": "work_fill",
+            "Guthaben nach Stück": "credit_quantity",
+            "Guthaben nach Minuten": "credit_time",
+        }
+        mode = modes[self.plan_mode.get()]
+        try:
+            if mode == "work_fill":
+                value = None
+            elif mode == "credit_time":
+                value = minutes_to_seconds(self.plan_value.get())
+            else:
+                value = int(self.plan_value.get())
+                if value <= 0:
+                    raise ValueError
+        except (ValueError, TypeError):
+            messagebox.showerror("Eingabe prüfen", "Bitte eine gültige Stückzahl oder Minutenzahl eingeben.", parent=self)
+            return
+        self.shift_plan_items.append({
+            "order_id": int(order["id"]), "mode": mode, "value": value,
+            "label": self.plan_mode.get(), "order": order,
+        })
+        self.refresh_shift_plan_queue()
+
+    def refresh_shift_plan_queue(self) -> None:
+        self.plan_queue.delete(*self.plan_queue.get_children())
+        for position, item in enumerate(self.shift_plan_items, start=1):
+            value = item["value"]
+            if item["mode"] == "credit_time" and value is not None:
+                value = f"{seconds_to_minutes(value)} min"
+            elif value is None:
+                value = "automatisch"
+            self.plan_queue.insert(
+                "", "end", iid=str(position - 1), values=(
+                    position, item["order"]["order_number"],
+                    f"{item['order']['die_number']}/{item['order']['operation']}",
+                    item["label"], value,
+                )
+            )
+
+    def remove_shift_plan_item(self) -> None:
+        selected = self.plan_queue.selection()
+        if not selected:
+            return
+        del self.shift_plan_items[int(selected[0])]
+        self.refresh_shift_plan_queue()
+        self.plan_result_tree.delete(*self.plan_result_tree.get_children())
+
+    def clear_shift_plan(self) -> None:
+        self.shift_plan_items.clear()
+        self.shift_plan_results.clear()
+        self.refresh_shift_plan_queue()
+        self.plan_result_tree.delete(*self.plan_result_tree.get_children())
+
+    def calculate_shift_plan(self) -> None:
+        self.shift_plan_results = []
+        try:
+            self.shift_plan_results = self.service.plan_sequence(
+                items=self.shift_plan_items,
+                reported_start=parse_datetime(self.plan_start.get()),
+                shift_number=int(self.plan_shift.get()),
+            )
+        except (ValueError, TypeError) as error:
+            messagebox.showerror("Planung nicht möglich", str(error), parent=self)
+            return
+        self.plan_result_tree.delete(*self.plan_result_tree.get_children())
+        for item in self.shift_plan_results:
+            self.plan_result_tree.insert(
+                "", "end", values=(
+                    item["position"], item["order_number"],
+                    "Guthaben" if item["kind"] == "credit" else "Bearbeitung",
+                    item["planned_start"].strftime("%d.%m. %H:%M"),
+                    item["planned_end"].strftime("%d.%m. %H:%M"),
+                    item["quantity"], format_piece_equivalent(item["piece_equivalent"]),
+                    f"{item['overtime_seconds'] // 60} min" if item["overtime_seconds"] else "–",
+                )
+            )
+
+    def start_first_shift_plan_item(self) -> None:
+        self.calculate_shift_plan()
+        if not self.shift_plan_results:
+            return
+        item = self.shift_plan_results[0]
+        if item["quantity"] <= 0:
+            messagebox.showerror("Kein Start", "Für diesen Planpunkt ist keine ganze Stückzahl verfügbar.", parent=self)
+            return
+        try:
+            if item["kind"] == "credit":
+                if item["mode"] == "credit_time":
+                    self.service.start_credit(
+                        order_id=item["order_id"], reported_start=item["planned_start"],
+                        shift_number=int(self.plan_shift.get()),
+                        productive_seconds=item["productive_seconds"],
+                    )
+                else:
+                    self.service.start_credit(
+                        order_id=item["order_id"], reported_start=item["planned_start"],
+                        shift_number=int(self.plan_shift.get()), quantity=item["quantity"],
+                    )
+            else:
+                self.service.start_work(
+                    order_id=item["order_id"], quantity=item["quantity"],
+                    reported_start=item["planned_start"], shift_number=int(self.plan_shift.get()),
+                )
+        except ValueError as error:
+            messagebox.showerror("Start nicht möglich", str(error), parent=self)
+            return
+        del self.shift_plan_items[0]
+        self._set_entry(self.plan_start, item["planned_end"].strftime("%Y-%m-%d %H:%M"))
+        self.refresh_shift_plan_queue()
+        self.notified_session_id = None
+        self.refresh_all()
+        self.tabs.select(self.dashboard_tab)
 
     def _refresh_quick_dies(self) -> None:
         dies = sorted({item["die_number"] for item in self.database.list_catalog()})
@@ -1200,6 +1431,7 @@ class WerkMateApp(tk.Tk):
         self.refresh_catalog()
         self._refresh_die_suggestions()
         self._refresh_quick_dies()
+        self.refresh_plan_orders()
         self.refresh_history()
 
     def _tick(self) -> None:

@@ -1,4 +1,4 @@
-# WerkMate 0.11.0 – Anleitung
+# WerkMate 0.12.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -224,7 +224,38 @@ schlägt 7 vor. Du kannst beim Abmelden trotzdem 7 oder 8 eingeben. Die gewählt
 verbleibende Guthaben berechnet sich anschließend aus deiner eingegebenen
 Stückzahl. Guthaben kann beliebig über mehrere Tage verteilt werden.
 
-## 9. Einen versehentlich gestarteten Einsatz abbrechen
+## 9. Mehrere Aufträge zu einem Schichtplan verbinden
+
+Im Reiter **Schichtplan** können Arbeits- und Guthabenblöcke in einer festen
+Reihenfolge kombiniert werden. Für jeden Planpunkt stehen vier Arten bereit:
+
+- **Offene Stück fest:** Eine vorgegebene Restmenge vollständig einplanen.
+- **Restschicht mit Auftrag füllen:** So viele vollständige Stück berechnen, wie
+  nach den vorherigen Planpunkten noch möglich sind.
+- **Guthaben nach Stück:** Eine bestimmte Guthabenmenge zuerst rückmelden.
+- **Guthaben nach Minuten:** Eine exakt vorgegebene Guthabenzeit reservieren.
+
+Beispiel:
+
+1. 8720 mit 12 offenen Stück als feste Menge hinzufügen.
+2. 4261 mit 40 Stück und 15 min/Stück als **Restschicht füllen** hinzufügen.
+3. Schicht 1 und Start 05:45 wählen.
+4. **Schicht berechnen** anklicken.
+
+WerkMate berücksichtigt die feste Pause nur einmal im fortlaufenden Zeitplan und
+zeigt für jeden Auftrag Start, Ende, ganze Stück, rechnerische Dezimalstückzahl
+und mögliche Überzeit. Im Beispiel mit 20 min/Stück für 8720 ergibt sich:
+
+- 8720: 12 Stück, 05:45–10:03 inklusive Pause
+- 4261: verbleibende 222 produktive Minuten, rechnerisch 14,8 Stück
+- 4261: 14 Stück vollständig, geplantes Ende 13:33
+
+Mit **Ersten Planpunkt starten** wird der erste Block übernommen. Danach bleibt
+die restliche Reihenfolge in der geöffneten App erhalten. Weicht die tatsächliche
+Rückmeldung vom Plan ab, kann die Startzeit des verbleibenden Plans angepasst
+und neu berechnet werden.
+
+## 10. Einen versehentlich gestarteten Einsatz abbrechen
 
 Klicke beim laufenden Auftrag auf **Fehlstart / Arbeitseinsatz abbrechen**. Es
 werden keine Stück gemeldet und der Auftrag bleibt vollständig offen. Danach
@@ -233,7 +264,7 @@ kannst du ihn mit korrigierter Menge, Zeit oder Schicht neu starten.
 Der abgebrochene Einsatz bleibt mit Status `abgebrochen` in der Historie, damit
 keine Daten unbemerkt verschwinden.
 
-## 10. Einen Restauftrag später fortsetzen
+## 11. Einen Restauftrag später fortsetzen
 
 1. Öffne den Reiter **Aufträge**.
 2. Markiere den teilweise erledigten Auftrag.
@@ -244,7 +275,7 @@ keine Daten unbemerkt verschwinden.
 Jeder Arbeitseinsatz wird separat gespeichert. Dadurch bleiben verschiedene
 Tage und Teilrückmeldungen nachvollziehbar.
 
-## 11. Historie ansehen
+## 12. Historie ansehen
 
 Der Reiter **Historie** zeigt alle persönlichen Arbeitseinsätze mit:
 
@@ -280,7 +311,7 @@ bewertet.
 Der Zeitprozentsatz verwendet die Vorgabezeit der geplanten Einsatzmenge als
 Basis. Der Stückprozentsatz verwendet die geplante Stückzahl als Basis.
 
-## 12. Gespeicherte Aufträge korrigieren
+## 13. Gespeicherte Aufträge korrigieren
 
 Markiere einen Auftrag und klicke auf **Auftrag bearbeiten** oder doppelklicke
 auf seine Tabellenzeile. Gesenknummer, Arbeitsgang, Gesamtmenge, aktuelle
@@ -293,7 +324,7 @@ korrigiert wurde.
 Ein abgegebener Restauftrag kann markiert und mit **Abgegebenen Auftrag wieder
 aufnehmen** erneut in die persönliche Bearbeitung übernommen werden.
 
-## 13. Wo liegen die Daten?
+## 14. Wo liegen die Daten?
 
 Die lokale Datenbank liegt standardmäßig hier:
 
@@ -309,7 +340,7 @@ C:\Users\DEIN-NAME\AppData\Local\WerkMate\werkmate.sqlite3
 
 Die Daten werden nicht automatisch zu GitHub oder in eine Cloud übertragen.
 
-## 14. Datensicherung
+## 15. Datensicherung
 
 Klicke oben rechts auf **Daten sichern**, wähle einen Zielordner und speichere
 die vorgeschlagene `.sqlite3`-Datei. WerkMate erzeugt eine konsistente Kopie
@@ -325,18 +356,19 @@ Zur Wiederherstellung WerkMate schließen und die gesicherte Datei wieder an
 denselben Ort kopieren. Eine komfortable Sicherungsfunktion in der Oberfläche
 ist für eine spätere Version vorgesehen.
 
-## 15. Bekannte Grenzen dieses Stands
+## 16. Bekannte Grenzen dieses Stands
 
 - noch keine Android- oder iOS-App
 - keine zuverlässige Benachrichtigung bei geschlossenem Programm
 - noch keine Wiederherstellung einer Sicherung direkt in der Oberfläche
 - Arbeitseinsätze können noch nicht nachträglich in der Oberfläche korrigiert werden
+- noch nicht gestartete Schichtplan-Reihenfolgen bleiben nur erhalten, solange WerkMate geöffnet ist
 - keine Statistiken und Exporte
 
 Der Rechenkern, die lokale Speicherung und der grundlegende persönliche Ablauf
 sind bereits vorhanden und automatisiert getestet.
 
-## 16. Optionale Konsolenbedienung
+## 17. Optionale Konsolenbedienung
 
 Die bisherige Konsolenoberfläche bleibt erhalten. Ihre Befehle sind in
 [`KONSOLEN-MVP.md`](KONSOLEN-MVP.md) dokumentiert.

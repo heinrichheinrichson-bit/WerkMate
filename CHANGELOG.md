@@ -4,6 +4,19 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.12.0] - 2026-08-26
+
+### Hinzugefügt
+
+- Verkettete Planung mehrerer Aufträge in frei gewählter Reihenfolge
+- Feste Restmenge eines Auftrags vor einem zweiten Auftrag
+- Automatisches Füllen der verbleibenden Schicht mit vollständigen Stücken
+- Guthabenblöcke nach Stück oder Minuten innerhalb desselben Schichtplans
+- Fortlaufende Pausenberechnung über alle Planpunkte
+- Start, Ende, Dezimalstückzahl, vollständige Stück und Überzeit je Planpunkt
+- Direkter Start des ersten berechneten Planpunkts
+- Übernahme des geplanten Endes als Start für die verbleibende Reihenfolge
+
 ## [0.11.0] - 2026-08-26
 
 ### Hinzugefügt
