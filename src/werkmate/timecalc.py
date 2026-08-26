@@ -122,25 +122,38 @@ def possible_complete_pieces(
     return pieces, timedelta(seconds=remainder_seconds), overtime
 
 
-def standard_shift(number: int, on_date: date) -> Shift:
-    """Erzeugt eine der drei konkreten Standardschichten für ein Datum."""
-    definitions = {
-        1: (time(5, 45), time(13, 45), time(8, 45), time(9, 3), False),
-        2: (time(13, 45), time(21, 45), time(17, 45), time(18, 3), False),
-        3: (time(21, 45), time(5, 45), time(1, 45), time(2, 3), True),
-    }
+DEFAULT_SHIFT_DEFINITIONS = {
+    1: (time(5, 45), time(13, 45), time(8, 45), time(9, 3)),
+    2: (time(13, 45), time(21, 45), time(17, 45), time(18, 3)),
+    3: (time(21, 45), time(5, 45), time(1, 45), time(2, 3)),
+}
+
+
+def standard_shift(
+    number: int,
+    on_date: date,
+    definition: tuple[time, time, time, time] | None = None,
+) -> Shift:
+    """Erzeugt eine konkrete Schicht; ohne Angabe gelten die WerkMate-Standardzeiten."""
     try:
-        start_time, end_time, pause_start_time, pause_end_time, overnight = definitions[number]
+        start_time, end_time, pause_start_time, pause_end_time = (
+            definition or DEFAULT_SHIFT_DEFINITIONS[number]
+        )
     except KeyError as error:
         raise ValueError("Die Schichtnummer muss 1, 2 oder 3 sein.") from error
 
+    overnight = end_time <= start_time
     start = datetime.combine(on_date, start_time)
     next_date = on_date + timedelta(days=1) if overnight else on_date
     end = datetime.combine(next_date, end_time)
-    pause_date = next_date if overnight else on_date
+    pause_date = next_date if overnight and pause_start_time < start_time else on_date
+    pause_end_date = (
+        pause_date + timedelta(days=1) if pause_end_time <= pause_start_time else pause_date
+    )
     pause = BreakWindow(
         datetime.combine(pause_date, pause_start_time),
-        datetime.combine(pause_date, pause_end_time),
+        datetime.combine(pause_end_date, pause_end_time),
     )
+    if pause.start < start or pause.end > end:
+        raise ValueError("Die Pause muss vollständig innerhalb der Schicht liegen.")
     return Shift(f"Schicht {number}", start, end, (pause,))
-

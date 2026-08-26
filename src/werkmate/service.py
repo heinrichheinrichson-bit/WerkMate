@@ -34,6 +34,22 @@ class WerkMateService:
     def __init__(self, database: WerkMateDatabase) -> None:
         self.database = database
 
+    def shift_for_start(self, number: int, reported_start: datetime) -> Shift:
+        settings = {int(item["shift_number"]): item for item in self.database.shift_settings()}
+        try:
+            item = settings[number]
+        except KeyError as error:
+            raise ValueError("Die Schichtnummer muss 1, 2 oder 3 sein.") from error
+        parse = lambda value: datetime.strptime(str(value), "%H:%M").time()
+        definition = (
+            parse(item["start_time"]), parse(item["end_time"]),
+            parse(item["break_start"]), parse(item["break_end"]),
+        )
+        base_date = reported_start.date()
+        if definition[1] <= definition[0] and reported_start.time() < definition[1]:
+            base_date -= timedelta(days=1)
+        return standard_shift(number, base_date, definition)
+
     def create_order(
         self,
         *,
@@ -76,7 +92,7 @@ class WerkMateService:
             raise ValueError("Es läuft bereits ein persönlicher Arbeitseinsatz.")
         if total_quantity <= 0:
             raise ValueError("Die Gesamtmenge muss größer als null sein.")
-        shift = shift_for_start(shift_number, reported_start)
+        shift = self.shift_for_start(shift_number, reported_start)
         if reported_start >= shift.end:
             raise ValueError("Die Anmeldezeit liegt nicht vor dem Schichtende.")
 
@@ -163,7 +179,7 @@ class WerkMateService:
         if order["status"] == "abgegeben":
             raise ValueError("Dieser Restauftrag wurde aus der persönlichen Nachverfolgung abgegeben.")
         shift = (
-            with_custom_shift_end(shift_for_start(shift_number, reported_start), custom_shift_end)
+            with_custom_shift_end(self.shift_for_start(shift_number, reported_start), custom_shift_end)
             if shift_number is not None
             else None
         )
@@ -202,7 +218,7 @@ class WerkMateService:
         if order is None:
             raise ValueError("Auftrag nicht gefunden.")
         shift = with_custom_shift_end(
-            shift_for_start(shift_number, reported_start), custom_shift_end
+            self.shift_for_start(shift_number, reported_start), custom_shift_end
         )
         if reported_start >= shift.end:
             raise ValueError("Die Anmeldezeit liegt nicht vor dem Schichtende.")
@@ -260,7 +276,9 @@ class WerkMateService:
             # Die verrechenbare Pause steckt vor Soll-Ende. Für die Prognose
             # wird eine noch bevorstehende Standardpause anhand der Schicht rekonstruiert.
             shift_number = int(session["shift_name"].split()[-1])
-            shift = shift_for_start(shift_number, datetime.fromisoformat(session["reported_started_at"]))
+            shift = self.shift_for_start(
+                shift_number, datetime.fromisoformat(session["reported_started_at"])
+            )
             reported_start = datetime.fromisoformat(session["reported_started_at"])
             pieces, remainder, overtime = possible_complete_pieces(
                 reported_start,
@@ -382,7 +400,7 @@ class WerkMateService:
         else:
             raise ValueError("Bitte Guthabenstückzahl oder Guthabenzeit angeben.")
 
-        shift = shift_for_start(shift_number, reported_start)
+        shift = self.shift_for_start(shift_number, reported_start)
         calculated_end = add_productive_duration(
             reported_start, timedelta(seconds=planned_seconds), shift.breaks
         )
@@ -447,7 +465,7 @@ class WerkMateService:
         """Plant Arbeits- und Guthabenblöcke lückenlos nacheinander."""
         if not items:
             raise ValueError("Der Schichtplan enthält keine Aufträge.")
-        shift = shift_for_start(shift_number, reported_start)
+        shift = self.shift_for_start(shift_number, reported_start)
         cursor = reported_start
         results: list[dict] = []
         for position, item in enumerate(items, start=1):

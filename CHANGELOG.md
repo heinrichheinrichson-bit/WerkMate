@@ -4,6 +4,18 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.14.0] - 2026-08-26
+
+### Neu
+
+- Eigener übersichtlicher Reiter für Schicht- und Pauseneinstellungen
+- Beginn, Ende und eine feste Pause sind für alle drei Schichten lokal einstellbar
+- Nachtschichten über Mitternacht werden automatisch erkannt
+- Ungültige Zeiten und Pausen außerhalb der Schicht werden verhindert
+- Automatische Schichterkennung berücksichtigt die persönlichen Einstellungen
+- Standardzeiten können mit einem Klick wieder in das Formular eingesetzt werden
+- Automatische Datenbankmigration auf Schema-Version 6
+
 ## [0.13.0] - 2026-08-26
 
 ### Neu

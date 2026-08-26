@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.13.0 – dauerhaft gespeicherte und fortsetzbare Schichtpläne**
+**Version 0.14.0 – einstellbare Schichten und Pausenzeiten**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern

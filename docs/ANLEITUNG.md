@@ -1,4 +1,4 @@
-# WerkMate 0.13.0 – Anleitung
+# WerkMate 0.14.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -365,19 +365,33 @@ Zur Wiederherstellung WerkMate schließen und die gesicherte Datei wieder an
 denselben Ort kopieren. Eine komfortable Sicherungsfunktion in der Oberfläche
 ist für eine spätere Version vorgesehen.
 
-## 16. Bekannte Grenzen dieses Stands
+## 16. Schichten und Pausen einstellen
+
+Im Reiter **Einstellungen** stehen die drei Schichten jeweils in einer eigenen
+Zeile. Beginn, Ende, Pausenbeginn und Pausenende werden im Format `HH:MM`
+eingetragen. Nachtschichten über Mitternacht erkennt WerkMate automatisch.
+
+Die Pause muss vollständig innerhalb der jeweiligen Schicht liegen. Sie stoppt
+nicht die sichtbare Uhr, sondern wird ausschließlich aus der produktiven Sollzeit
+herausgerechnet. Änderungen gelten für neue Einsätze und neue Berechnungen;
+bereits gespeicherte Rückmeldungen werden nicht nachträglich verändert.
+
+**Standardzeiten einsetzen** trägt die ursprünglichen WerkMate-Zeiten wieder in
+das Formular ein. Dauerhaft übernommen werden sie erst mit
+**EINSTELLUNGEN SPEICHERN**.
+
+## 17. Bekannte Grenzen dieses Stands
 
 - noch keine Android- oder iOS-App
 - keine zuverlässige Benachrichtigung bei geschlossenem Programm
 - noch keine Wiederherstellung einer Sicherung direkt in der Oberfläche
 - Arbeitseinsätze können noch nicht nachträglich in der Oberfläche korrigiert werden
-- Schichten und Pausen sind derzeit noch fest im Programm hinterlegt
 - keine Statistiken und Exporte
 
 Der Rechenkern, die lokale Speicherung und der grundlegende persönliche Ablauf
 sind bereits vorhanden und automatisiert getestet.
 
-## 17. Optionale Konsolenbedienung
+## 18. Optionale Konsolenbedienung
 
 Die bisherige Konsolenoberfläche bleibt erhalten. Ihre Befehle sind in
 [`KONSOLEN-MVP.md`](KONSOLEN-MVP.md) dokumentiert.

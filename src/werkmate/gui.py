@@ -42,7 +42,15 @@ def format_total_target_time(seconds: int) -> str:
     return f"{minute_text} min ({hours} h {minutes:02d} min)"
 
 
-def current_shift_number(at: datetime) -> int:
+def current_shift_number(at: datetime, settings: list[dict] | None = None) -> int:
+    if settings:
+        current = at.time()
+        for item in settings:
+            start = datetime.strptime(item["start_time"], "%H:%M").time()
+            end = datetime.strptime(item["end_time"], "%H:%M").time()
+            inside = start <= current < end if start < end else current >= start or current < end
+            if inside:
+                return int(item["shift_number"])
     current = at.time()
     if current >= datetime.strptime("05:45", "%H:%M").time() and current < datetime.strptime("13:45", "%H:%M").time():
         return 1
@@ -99,12 +107,14 @@ class WerkMateApp(tk.Tk):
         self.orders_tab = ttk.Frame(self.tabs, padding=18)
         self.catalog_tab = ttk.Frame(self.tabs, padding=18)
         self.history_tab = ttk.Frame(self.tabs, padding=18)
+        self.settings_tab = ttk.Frame(self.tabs, padding=18)
         self.tabs.add(self.dashboard_tab, text="Laufender Auftrag")
         self.tabs.add(self.quick_tab, text="Schnellstart")
         self.tabs.add(self.plan_tab, text="Schichtplan")
         self.tabs.add(self.orders_tab, text="Aufträge")
         self.tabs.add(self.catalog_tab, text="Gesenk-Katalog")
         self.tabs.add(self.history_tab, text="Historie")
+        self.tabs.add(self.settings_tab, text="Einstellungen")
 
         self._build_dashboard()
         self._build_quick_start()
@@ -112,6 +122,10 @@ class WerkMateApp(tk.Tk):
         self._build_orders()
         self._build_catalog()
         self._build_history()
+        self._build_settings()
+
+    def _current_shift_number(self, at: datetime) -> int:
+        return current_shift_number(at, self.database.shift_settings())
 
     def _build_dashboard(self) -> None:
         self.active_title = ttk.Label(
@@ -264,7 +278,7 @@ class WerkMateApp(tk.Tk):
             "<<ComboboxSelected>>",
             lambda _event: self.refresh_start_forecast(apply_recommendation=True),
         )
-        self.shift_number.set(str(current_shift_number(local_now())))
+        self.shift_number.set(str(self._current_shift_number(local_now())))
         self._fill_start_now()
 
     def _build_quick_start(self) -> None:
@@ -300,7 +314,7 @@ class WerkMateApp(tk.Tk):
 
         self.quick_entries[2].bind("<FocusIn>", lambda _event: self._refresh_quick_dies())
         self.quick_entries[2].bind("<<ComboboxSelected>>", self._quick_die_selected)
-        self.quick_entries[6].set(str(current_shift_number(local_now())))
+        self.quick_entries[6].set(str(self._current_shift_number(local_now())))
         self._set_entry(self.quick_entries[5], local_now().strftime("%Y-%m-%d %H:%M"))
         ttk.Label(form, text="Notiz (optional)").grid(row=4, column=0, sticky="w", padx=6)
         self.quick_note = ttk.Entry(form)
@@ -341,7 +355,7 @@ class WerkMateApp(tk.Tk):
         self.plan_start.pack(side="left", padx=(6, 16))
         ttk.Label(settings, text="Schicht:").pack(side="left")
         self.plan_shift = ttk.Combobox(settings, values=("1", "2", "3"), state="readonly", width=6)
-        self.plan_shift.set(str(current_shift_number(local_now())))
+        self.plan_shift.set(str(self._current_shift_number(local_now())))
         self.plan_shift.pack(side="left", padx=6)
 
         add = ttk.LabelFrame(self.plan_tab, text="Planpunkt hinzufügen", padding=10)
@@ -1093,7 +1107,7 @@ class WerkMateApp(tk.Tk):
         start_entry.grid(row=3, column=1, sticky="w", pady=(12, 0))
         ttk.Label(body, text="Schicht:").grid(row=4, column=0, sticky="w", pady=(12, 0))
         shift_entry = ttk.Combobox(body, values=("1", "2", "3"), state="readonly", width=8)
-        shift_entry.set(str(current_shift_number(local_now())))
+        shift_entry.set(str(self._current_shift_number(local_now())))
         shift_entry.grid(row=4, column=1, sticky="w", pady=(12, 0))
         preview = ttk.Label(
             body,
@@ -1498,6 +1512,82 @@ class WerkMateApp(tk.Tk):
             f"Zeitabweichung: {format_time_performance(performance)}\n"
             f"Stückabweichung: {format_quantity_performance(performance)}\n"
             f"Notiz: {session['note'] or '–'}",
+            parent=self,
+        )
+
+    def _build_settings(self) -> None:
+        ttk.Label(self.settings_tab, text="Schichten und Pausen", style="Title.TLabel").pack(
+            anchor="w"
+        )
+        ttk.Label(
+            self.settings_tab,
+            text=(
+                "Diese Zeiten gelten für Prognosen und Rückmeldungen. Die Uhr läuft während "
+                "der Pause weiter; WerkMate zieht sie nur bei der Sollzeitberechnung ab."
+            ),
+            style="Muted.TLabel",
+            wraplength=850,
+        ).pack(anchor="w", pady=(4, 18))
+        frame = ttk.LabelFrame(self.settings_tab, text="Arbeitszeitmodell", padding=12)
+        frame.pack(fill="x")
+        for column, text_value in enumerate(("Schicht", "Beginn", "Ende", "Pause von", "Pause bis")):
+            ttk.Label(frame, text=text_value).grid(row=0, column=column, padx=8, pady=4)
+        self.shift_setting_entries: dict[int, list[ttk.Entry]] = {}
+        for row, item in enumerate(self.database.shift_settings(), start=1):
+            number = int(item["shift_number"])
+            ttk.Label(frame, text=f"Schicht {number}").grid(row=row, column=0, padx=8, pady=6)
+            entries = []
+            for column, key in enumerate(
+                ("start_time", "end_time", "break_start", "break_end"), start=1
+            ):
+                entry = ttk.Entry(frame, width=12, justify="center")
+                entry.insert(0, item[key])
+                entry.grid(row=row, column=column, padx=8, pady=6)
+                entries.append(entry)
+            self.shift_setting_entries[number] = entries
+        buttons = ttk.Frame(self.settings_tab)
+        buttons.pack(fill="x", pady=12)
+        ttk.Button(
+            buttons, text="Standardzeiten einsetzen", command=self.reset_shift_settings_form
+        ).pack(side="left")
+        ttk.Button(
+            buttons, text="EINSTELLUNGEN SPEICHERN", style="Primary.TButton",
+            command=self.save_shift_settings,
+        ).pack(side="right")
+        ttk.Label(
+            self.settings_tab,
+            text="Zeitformat: HH:MM · Nachtschichten über Mitternacht werden automatisch erkannt.",
+            style="Muted.TLabel",
+        ).pack(anchor="w")
+
+    def reset_shift_settings_form(self) -> None:
+        defaults = {
+            1: ("05:45", "13:45", "08:45", "09:03"),
+            2: ("13:45", "21:45", "17:45", "18:03"),
+            3: ("21:45", "05:45", "01:45", "02:03"),
+        }
+        for number, values in defaults.items():
+            for entry, value in zip(self.shift_setting_entries[number], values):
+                self._set_entry(entry, value)
+
+    def save_shift_settings(self) -> None:
+        settings = []
+        for number, entries in self.shift_setting_entries.items():
+            settings.append({
+                "shift_number": number,
+                "start_time": entries[0].get().strip(),
+                "end_time": entries[1].get().strip(),
+                "break_start": entries[2].get().strip(),
+                "break_end": entries[3].get().strip(),
+            })
+        try:
+            self.database.save_shift_settings(settings)
+        except ValueError as error:
+            messagebox.showerror("Einstellungen nicht gespeichert", str(error), parent=self)
+            return
+        messagebox.showinfo(
+            "Einstellungen gespeichert",
+            "Die neuen Zeiten gelten für alle künftig gestarteten Arbeitseinsätze und Pläne.",
             parent=self,
         )
 

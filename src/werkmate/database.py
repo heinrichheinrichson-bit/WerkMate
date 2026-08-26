@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class WerkMateDatabase:
@@ -141,6 +141,15 @@ class WerkMateDatabase:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS shift_settings (
+                    shift_number INTEGER PRIMARY KEY CHECK(shift_number BETWEEN 1 AND 3),
+                    start_time TEXT NOT NULL,
+                    end_time TEXT NOT NULL,
+                    break_start TEXT NOT NULL,
+                    break_end TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_sessions_order ON work_sessions(order_id);
                 CREATE INDEX IF NOT EXISTS idx_sessions_reported_start
                     ON work_sessions(reported_started_at);
@@ -175,6 +184,58 @@ class WerkMateDatabase:
                 "INSERT OR REPLACE INTO metadata(key, value) VALUES('schema_version', ?)",
                 (str(SCHEMA_VERSION),),
             )
+            now = self._now()
+            defaults = (
+                (1, "05:45", "13:45", "08:45", "09:03"),
+                (2, "13:45", "21:45", "17:45", "18:03"),
+                (3, "21:45", "05:45", "01:45", "02:03"),
+            )
+            connection.executemany(
+                """
+                INSERT OR IGNORE INTO shift_settings(
+                    shift_number, start_time, end_time, break_start, break_end, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [(*item, now) for item in defaults],
+            )
+
+    def shift_settings(self) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM shift_settings ORDER BY shift_number"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def save_shift_settings(self, settings: list[dict[str, Any]]) -> None:
+        if {int(item["shift_number"]) for item in settings} != {1, 2, 3}:
+            raise ValueError("Es müssen genau die drei Schichten angegeben werden.")
+        from .timecalc import standard_shift
+
+        for item in settings:
+            try:
+                values = tuple(
+                    datetime.strptime(str(item[key]).strip(), "%H:%M").time()
+                    for key in ("start_time", "end_time", "break_start", "break_end")
+                )
+                standard_shift(int(item["shift_number"]), date.today(), values)
+            except ValueError as error:
+                raise ValueError(
+                    f"Schicht {item['shift_number']}: Zeiten bitte als HH:MM eingeben; "
+                    "die Pause muss innerhalb der Schicht liegen."
+                ) from error
+        now = self._now()
+        with self.connect() as connection:
+            for item in settings:
+                connection.execute(
+                    """
+                    UPDATE shift_settings SET start_time = ?, end_time = ?, break_start = ?,
+                        break_end = ?, updated_at = ? WHERE shift_number = ?
+                    """,
+                    (
+                        item["start_time"], item["end_time"], item["break_start"],
+                        item["break_end"], now, int(item["shift_number"]),
+                    ),
+                )
 
     def save_shift_plan(
         self, *, reported_start: datetime, shift_number: int, items: list[dict[str, Any]]
