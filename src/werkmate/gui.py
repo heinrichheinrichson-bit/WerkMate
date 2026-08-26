@@ -7,7 +7,7 @@ import sqlite3
 import tkinter as tk
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from . import __version__
 from .cli import default_database_path, format_duration, parse_datetime, warn_unusual_end
@@ -320,6 +320,15 @@ class WerkMateApp(tk.Tk):
         )
         ttk.Button(order_actions, text="Guthaben anmelden", command=self.open_credit_dialog).pack(
             side="left"
+        )
+        ttk.Button(order_actions, text="Duplizieren", command=self.duplicate_selected_order).pack(
+            side="left", padx=8
+        )
+        ttk.Button(order_actions, text="In Papierkorb", command=self.archive_selected_order).pack(
+            side="left"
+        )
+        ttk.Button(order_actions, text="Papierkorb", command=self.open_order_trash).pack(
+            side="right", padx=(8, 0)
         )
         ttk.Button(order_actions, text="Abgegebenen Auftrag wieder aufnehmen", command=self.resume_selected).pack(
             side="right"
@@ -834,8 +843,17 @@ class WerkMateApp(tk.Tk):
         ttk.Button(actions, text="Rückmeldung korrigieren", command=self.edit_history_entry).pack(
             side="left", padx=6
         )
-        ttk.Button(actions, text="Korrekturprotokoll", command=self.show_session_corrections).pack(
+        ttk.Button(actions, text="Auftragsdaten ergänzen", command=self.edit_history_order).pack(
             side="left"
+        )
+        ttk.Button(actions, text="Korrekturprotokoll", command=self.show_session_corrections).pack(
+            side="left", padx=6
+        )
+        ttk.Button(actions, text="Stornieren", command=self.void_history_entry).pack(
+            side="left"
+        )
+        ttk.Button(actions, text="Storno-Papierkorb", command=self.open_history_trash).pack(
+            side="left", padx=6
         )
         ttk.Button(actions, text="Historie aktualisieren", command=self.refresh_history).pack(
             side="right"
@@ -1057,9 +1075,111 @@ class WerkMateApp(tk.Tk):
         self.tabs.select(self.dashboard_tab)
         self.refresh_all()
 
+    def duplicate_selected_order(self) -> None:
+        try:
+            new_id = self.database.duplicate_order(self.selected_order_id())
+        except ValueError as error:
+            messagebox.showerror("Duplizieren nicht möglich", str(error), parent=self)
+            return
+        self.refresh_orders()
+        self.open_order_editor(new_id)
+
+    def archive_selected_order(self) -> None:
+        try:
+            order_id = self.selected_order_id()
+            order = self.database.get_order(order_id)
+            if order is None:
+                raise ValueError("Auftrag nicht gefunden.")
+            if not messagebox.askyesno(
+                "Auftrag in Papierkorb verschieben",
+                f"{order['order_number']} aus den normalen Listen ausblenden?\n\n"
+                "Rückmeldungen und Guthaben bleiben erhalten, bis der Auftrag im Papierkorb "
+                "endgültig gelöscht wird.",
+                parent=self,
+            ):
+                return
+            self.database.archive_order(order_id)
+        except ValueError as error:
+            messagebox.showerror("Archivieren nicht möglich", str(error), parent=self)
+            return
+        self.refresh_all()
+
+    def open_order_trash(self) -> None:
+        dialog = tk.Toplevel(self)
+        dialog.title("Auftrags-Papierkorb")
+        dialog.geometry("780x420")
+        dialog.transient(self)
+        body = ttk.Frame(dialog, padding=14)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text="Archivierte Aufträge", style="Title.TLabel").pack(anchor="w")
+        tree = ttk.Treeview(
+            body, columns=("id", "order", "die", "operation", "actual", "reported"),
+            show="headings", height=12,
+        )
+        for column, heading, width in zip(
+            ("id", "order", "die", "operation", "actual", "reported"),
+            ("ID", "Auftrag", "Gesenk", "AG", "Bearbeitet", "Rückgemeldet"),
+            (45, 190, 100, 80, 110, 120),
+        ):
+            tree.heading(column, text=heading)
+            tree.column(column, width=width, anchor="center")
+        tree.pack(fill="both", expand=True, pady=10)
+
+        def refresh() -> None:
+            tree.delete(*tree.get_children())
+            for order in self.database.list_orders(include_archived=True):
+                if order["status"] == "archiviert":
+                    tree.insert("", "end", iid=str(order["id"]), values=(
+                        order["id"], order["order_number"], order["die_number"],
+                        order["operation"], order["completed_quantity"], order["reported_quantity"],
+                    ))
+
+        def selected_id() -> int:
+            if not tree.selection():
+                raise ValueError("Bitte einen archivierten Auftrag auswählen.")
+            return int(tree.selection()[0])
+
+        def restore() -> None:
+            try:
+                self.database.restore_archived_order(selected_id())
+            except ValueError as error:
+                messagebox.showerror("Wiederherstellen nicht möglich", str(error), parent=dialog)
+                return
+            refresh(); self.refresh_all()
+
+        def delete() -> None:
+            try:
+                order_id = selected_id()
+                order = self.database.get_order(order_id)
+                if not messagebox.askyesno(
+                    "Endgültig löschen",
+                    f"{order['order_number']} einschließlich aller zugehörigen Rückmeldungen "
+                    "unwiderruflich löschen?",
+                    icon="warning", parent=dialog,
+                ):
+                    return
+                self.database.permanently_delete_archived_order(order_id)
+            except ValueError as error:
+                messagebox.showerror("Löschen nicht möglich", str(error), parent=dialog)
+                return
+            refresh(); self.refresh_all()
+
+        actions = ttk.Frame(body); actions.pack(fill="x")
+        ttk.Button(actions, text="Wiederherstellen", command=restore).pack(side="left")
+        ttk.Button(actions, text="Endgültig löschen", command=delete).pack(side="right")
+        refresh()
+
     def edit_selected_order(self) -> None:
         try:
-            order = self.database.get_order(self.selected_order_id())
+            order_id = self.selected_order_id()
+        except ValueError as error:
+            messagebox.showerror("Keine Auswahl", str(error), parent=self)
+            return
+        self.open_order_editor(order_id)
+
+    def open_order_editor(self, order_id: int) -> None:
+        try:
+            order = self.database.get_order(order_id)
             if order is None:
                 raise ValueError("Auftrag nicht gefunden.")
         except ValueError as error:
@@ -1074,7 +1194,7 @@ class WerkMateApp(tk.Tk):
         body = ttk.Frame(dialog, padding=18)
         body.pack(fill="both", expand=True)
         values = (
-            ("Auftragsnummer", order["order_number"], False),
+            ("Auftragsnummer", order["order_number"], True),
             ("Gesenknummer", order["die_number"], True),
             ("Arbeitsgang", order["operation"], True),
             ("Gesamtmenge", str(order["original_quantity"]), True),
@@ -1099,6 +1219,7 @@ class WerkMateApp(tk.Tk):
             try:
                 self.database.update_order(
                     int(order["id"]),
+                    order_number=entries[0].get(),
                     die_number=entries[1].get(),
                     operation=entries[2].get(),
                     original_quantity=int(entries[3].get()),
@@ -1612,6 +1733,86 @@ class WerkMateApp(tk.Tk):
             messagebox.showinfo("Keine Auswahl", "Bitte zuerst eine Rückmeldung auswählen.", parent=self)
             return None
         return self.database.get_session(int(selected[0]))
+
+    def edit_history_order(self) -> None:
+        session = self._selected_history_session()
+        if session is not None:
+            self.open_order_editor(int(session["order_id"]))
+
+    def void_history_entry(self) -> None:
+        session = self._selected_history_session()
+        if session is None:
+            return
+        reason = simpledialog.askstring(
+            "Rückmeldung stornieren",
+            "Warum soll diese Rückmeldung storniert werden?",
+            parent=self,
+        )
+        if reason is None:
+            return
+        try:
+            self.database.void_session(int(session["id"]), reason=reason)
+        except ValueError as error:
+            messagebox.showerror("Stornierung nicht möglich", str(error), parent=self)
+            return
+        self.refresh_all()
+
+    def open_history_trash(self) -> None:
+        dialog = tk.Toplevel(self)
+        dialog.title("Stornierte Rückmeldungen")
+        dialog.geometry("880x420")
+        dialog.transient(self)
+        body = ttk.Frame(dialog, padding=14); body.pack(fill="both", expand=True)
+        ttk.Label(body, text="Storno-Papierkorb", style="Title.TLabel").pack(anchor="w")
+        tree = ttk.Treeview(
+            body, columns=("id", "date", "order", "die", "actual", "reported"),
+            show="headings", height=12,
+        )
+        for column, heading, width in zip(
+            ("id", "date", "order", "die", "actual", "reported"),
+            ("ID", "Datum", "Auftrag", "Gesenk", "Bearbeitet", "Rückgemeldet"),
+            (50, 130, 220, 100, 110, 120),
+        ):
+            tree.heading(column, text=heading); tree.column(column, width=width, anchor="center")
+        tree.pack(fill="both", expand=True, pady=10)
+
+        def refresh() -> None:
+            tree.delete(*tree.get_children())
+            for item in self.database.history(limit=10000, status="storniert"):
+                tree.insert("", "end", iid=str(item["id"]), values=(
+                    item["id"], display_time(item["reported_started_at"]), item["order_number"],
+                    item["die_number"], item["completed_quantity"], item["reported_quantity"],
+                ))
+
+        def selected_id() -> int:
+            if not tree.selection():
+                raise ValueError("Bitte eine stornierte Rückmeldung auswählen.")
+            return int(tree.selection()[0])
+
+        def restore() -> None:
+            try:
+                self.database.restore_voided_session(selected_id())
+            except ValueError as error:
+                messagebox.showerror("Wiederherstellen nicht möglich", str(error), parent=dialog); return
+            refresh(); self.refresh_all()
+
+        def delete() -> None:
+            try:
+                session_id = selected_id()
+                if not messagebox.askyesno(
+                    "Endgültig löschen", "Diese stornierte Rückmeldung unwiderruflich löschen?",
+                    icon="warning", parent=dialog,
+                ):
+                    return
+                self.database.permanently_delete_voided_session(session_id)
+            except ValueError as error:
+                messagebox.showerror("Löschen nicht möglich", str(error), parent=dialog); return
+            refresh(); self.refresh_all()
+
+        actions = ttk.Frame(body); actions.pack(fill="x")
+        ttk.Button(actions, text="Wiederherstellen", command=restore).pack(side="left")
+        ttk.Button(actions, text="Endgültig löschen", command=delete).pack(side="right")
+        refresh()
 
     def edit_history_entry(self) -> None:
         session = self._selected_history_session()

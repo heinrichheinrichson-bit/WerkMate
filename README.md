@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.19.0 – erster Android-/iOS-Flutter-Prototyp**
+**Version 0.20.0 – Duplizieren, Papierkorb und Stornierungen**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern

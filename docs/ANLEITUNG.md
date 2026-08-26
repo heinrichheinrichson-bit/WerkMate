@@ -1,4 +1,4 @@
-# WerkMate 0.19.0 – Anleitung
+# WerkMate 0.20.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -347,6 +347,18 @@ Abmeldezeit, tatsächlich bearbeitete Stück, betrieblich rückgemeldete Stück 
 Notiz. Ein Korrekturgrund ist verpflichtend. **Korrekturprotokoll** zeigt jeden
 alten und neuen Wert samt Zeitpunkt und Begründung. Offene Menge, Guthaben und
 Leistungsabweichungen werden automatisch neu berechnet.
+
+Mit **Duplizieren** entsteht eine unabhängige Kopie des ausgewählten Auftrags;
+direkt danach öffnet sich der Bearbeitungsdialog für Auftragsnummer, Gesenk, AG,
+Menge, Stückzeit und Notiz. **In Papierkorb** blendet einen Auftrag aus den
+normalen Listen aus. Im **Papierkorb** kann er wiederhergestellt oder mitsamt
+seinen Rückmeldungen endgültig gelöscht werden.
+
+Über **Auftragsdaten ergänzen** in der Historie können auch automatisch erzeugte
+Schnellstart-Auftragsnummern und fehlende Gesenk-/AG-Daten später berichtigt
+werden. Eine fehlerhafte Rückmeldung wird über **Stornieren** aus Mengen,
+Guthaben und Auswertungen entfernt. Der **Storno-Papierkorb** erlaubt
+Wiederherstellen oder endgültiges Bereinigen.
 
 Ein abgegebener Restauftrag kann markiert und mit **Abgegebenen Auftrag wieder
 aufnehmen** erneut in die persönliche Bearbeitung übernommen werden.

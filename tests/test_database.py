@@ -306,3 +306,54 @@ def test_restore_rejects_unrelated_sqlite_file(database, tmp_path) -> None:
     unrelated.path.write_bytes(b"not a database")
     with pytest.raises(sqlite3.DatabaseError):
         database.restore_from(unrelated.path)
+
+
+def test_duplicate_archive_and_order_trash(database) -> None:
+    original_id = create_order(database)
+    copy_id = database.duplicate_order(original_id)
+    copy = database.get_order(copy_id)
+    assert copy["order_number"] == "FA-4711-KOPIE"
+    assert copy["die_number"] == "8720"
+    assert copy["original_quantity"] == 24
+
+    database.archive_order(copy_id)
+    assert copy_id not in {item["id"] for item in database.list_orders()}
+    assert copy_id in {item["id"] for item in database.list_orders(include_archived=True)}
+    database.restore_archived_order(copy_id)
+    assert database.get_order(copy_id)["status"] == "offen"
+    database.archive_order(copy_id)
+    database.permanently_delete_archived_order(copy_id)
+    assert database.get_order(copy_id) is None
+
+
+def test_voided_report_is_hidden_reversible_and_excluded_from_totals(database) -> None:
+    order_id = create_order(database)
+    start = datetime(2026, 8, 26, 6)
+    session_id = database.start_session(
+        order_id=order_id, shift_name="Schicht 1", quantity_to_process=4,
+        seconds_per_piece=1200, actual_started_at=start, reported_started_at=start,
+        target_end=start + timedelta(minutes=80), pause_seconds=0,
+    )
+    database.complete_session(
+        session_id, completed_quantity=4, reported_quantity=4,
+        actual_confirmed_at=start + timedelta(minutes=80),
+        reported_ended_at=start + timedelta(minutes=80),
+    )
+    database.void_session(session_id, reason="Testeintrag")
+    assert database.get_order(order_id)["completed_quantity"] == 0
+    assert database.history() == []
+    assert database.history(status="storniert")[0]["id"] == session_id
+    database.restore_voided_session(session_id)
+    assert database.get_order(order_id)["completed_quantity"] == 4
+    assert database.history()[0]["status"] == "abgeschlossen"
+
+
+def test_quick_order_number_can_be_completed_later(database) -> None:
+    order_id = create_order(database)
+    database.update_order(
+        order_id, order_number="ECHTE-4711", die_number="9999", operation="ZP",
+        original_quantity=24, seconds_per_piece=900, note="nachgetragen",
+    )
+    order = database.get_order(order_id)
+    assert order["order_number"] == "ECHTE-4711"
+    assert order["die_number"] == "9999"

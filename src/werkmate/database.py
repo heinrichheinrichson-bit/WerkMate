@@ -10,7 +10,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 class WerkMateDatabase:
@@ -354,12 +354,12 @@ class WerkMateDatabase:
             row = connection.execute(
                 """
                 SELECT o.*,
-                       COALESCE(SUM(ws.completed_quantity), 0) AS completed_quantity,
-                       COALESCE(SUM(ws.reported_quantity), 0) AS reported_quantity,
-                       o.original_quantity - COALESCE(SUM(ws.completed_quantity), 0)
+                       COALESCE(SUM(CASE WHEN ws.status != 'storniert' THEN ws.completed_quantity END), 0) AS completed_quantity,
+                       COALESCE(SUM(CASE WHEN ws.status != 'storniert' THEN ws.reported_quantity END), 0) AS reported_quantity,
+                       o.original_quantity - COALESCE(SUM(CASE WHEN ws.status != 'storniert' THEN ws.completed_quantity END), 0)
                            AS open_quantity,
-                       COALESCE(SUM(ws.completed_quantity), 0)
-                           - COALESCE(SUM(ws.reported_quantity), 0) AS credit_quantity
+                       COALESCE(SUM(CASE WHEN ws.status != 'storniert' THEN ws.completed_quantity END), 0)
+                           - COALESCE(SUM(CASE WHEN ws.status != 'storniert' THEN ws.reported_quantity END), 0) AS credit_quantity
                 FROM orders o
                 LEFT JOIN work_sessions ws ON ws.order_id = o.id
                 WHERE o.id = ?
@@ -376,8 +376,15 @@ class WerkMateDatabase:
             ).fetchone()
         return self.get_order(int(row["id"])) if row else None
 
-    def list_orders(self, *, include_handed_off: bool = True) -> list[dict[str, Any]]:
-        clause = "" if include_handed_off else "WHERE status != 'abgegeben'"
+    def list_orders(
+        self, *, include_handed_off: bool = True, include_archived: bool = False
+    ) -> list[dict[str, Any]]:
+        conditions = []
+        if not include_handed_off:
+            conditions.append("status != 'abgegeben'")
+        if not include_archived:
+            conditions.append("status != 'archiviert'")
+        clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         with self.connect() as connection:
             ids = connection.execute(
                 f"SELECT id FROM orders {clause} ORDER BY updated_at DESC"  # noqa: S608
@@ -503,7 +510,7 @@ class WerkMateDatabase:
             totals = connection.execute(
                 """
                 SELECT o.original_quantity,
-                       COALESCE(SUM(ws.completed_quantity), 0) AS completed
+                       COALESCE(SUM(CASE WHEN ws.status != 'storniert' THEN ws.completed_quantity END), 0) AS completed
                 FROM orders o LEFT JOIN work_sessions ws ON ws.order_id = o.id
                 WHERE o.id = ? GROUP BY o.id
                 """,
@@ -577,7 +584,7 @@ class WerkMateDatabase:
         allowed = {
             "order": {"die_number", "operation", "original_quantity", "note", "status"},
             "session": {
-                "reported_started_at", "reported_ended_at", "completed_quantity", "note"
+                "reported_started_at", "reported_ended_at", "completed_quantity", "note", "status"
             },
         }
         if entity_type not in allowed or field_name not in allowed[entity_type]:
@@ -639,9 +646,9 @@ class WerkMateDatabase:
             totals = connection.execute(
                 """
                 SELECT o.original_quantity,
-                       COALESCE(SUM(CASE WHEN ws.id != ? THEN ws.completed_quantity END), 0)
+                       COALESCE(SUM(CASE WHEN ws.id != ? AND ws.status != 'storniert' THEN ws.completed_quantity END), 0)
                            AS other_completed,
-                       COALESCE(SUM(CASE WHEN ws.id != ? THEN ws.reported_quantity END), 0)
+                       COALESCE(SUM(CASE WHEN ws.id != ? AND ws.status != 'storniert' THEN ws.reported_quantity END), 0)
                            AS other_reported
                 FROM orders o LEFT JOIN work_sessions ws ON ws.order_id = o.id
                 WHERE o.id = ? GROUP BY o.id
@@ -709,10 +716,117 @@ class WerkMateDatabase:
             "order", order_id, "status", "teilweise_erledigt", reason="Erneut aufgenommen"
         )
 
+    def duplicate_order(self, order_id: int, *, order_number: str | None = None) -> int:
+        order = self.get_order(order_id)
+        if order is None:
+            raise ValueError("Auftrag nicht gefunden.")
+        base = (order_number or f"{order['order_number']}-KOPIE").strip()
+        candidate = base
+        suffix = 2
+        while self.find_order(candidate) is not None:
+            candidate = f"{base}-{suffix}"
+            suffix += 1
+        return self.create_order(
+            order_number=candidate,
+            die_number=str(order["die_number"]),
+            operation=str(order["operation"]),
+            original_quantity=int(order["original_quantity"]),
+            seconds_per_piece=int(order["seconds_per_piece"]),
+            note=str(order["note"]),
+        )
+
+    def archive_order(self, order_id: int) -> None:
+        active = self.active_session()
+        if active is not None and int(active["order_id"]) == order_id:
+            raise ValueError("Ein laufender Auftrag kann nicht archiviert werden.")
+        self.update_field("order", order_id, "status", "archiviert", reason="In Papierkorb verschoben")
+
+    def restore_archived_order(self, order_id: int) -> None:
+        order = self.get_order(order_id)
+        if order is None or order["status"] != "archiviert":
+            raise ValueError("Archivierter Auftrag nicht gefunden.")
+        restored_status = (
+            "vollstaendig_erledigt" if int(order["open_quantity"]) <= 0
+            else "teilweise_erledigt" if int(order["completed_quantity"]) else "offen"
+        )
+        self.update_field("order", order_id, "status", restored_status, reason="Aus Papierkorb wiederhergestellt")
+
+    def permanently_delete_archived_order(self, order_id: int) -> None:
+        order = self.get_order(order_id)
+        if order is None or order["status"] != "archiviert":
+            raise ValueError("Nur archivierte Aufträge können endgültig gelöscht werden.")
+        with self.connect() as connection:
+            session_ids = [
+                int(row["id"]) for row in connection.execute(
+                    "SELECT id FROM work_sessions WHERE order_id = ?", (order_id,)
+                ).fetchall()
+            ]
+            connection.execute("DELETE FROM shift_plan_items WHERE order_id = ?", (order_id,))
+            for session_id in session_ids:
+                connection.execute(
+                    "DELETE FROM correction_log WHERE entity_type = 'session' AND entity_id = ?",
+                    (session_id,),
+                )
+            connection.execute("DELETE FROM work_sessions WHERE order_id = ?", (order_id,))
+            connection.execute(
+                "DELETE FROM correction_log WHERE entity_type = 'order' AND entity_id = ?",
+                (order_id,),
+            )
+            connection.execute("DELETE FROM orders WHERE id = ?", (order_id,))
+
+    def void_session(self, session_id: int, *, reason: str) -> None:
+        session = self.get_session(session_id)
+        if session is None or session["status"] != "abgeschlossen":
+            raise ValueError("Nur abgeschlossene Rückmeldungen können storniert werden.")
+        if not reason.strip():
+            raise ValueError("Bitte einen Stornierungsgrund angeben.")
+        self.update_field("session", session_id, "status", "storniert", reason=reason)
+        self._sync_order_status(int(session["order_id"]))
+
+    def restore_voided_session(self, session_id: int) -> None:
+        session = self.get_session(session_id)
+        if session is None or session["status"] != "storniert":
+            raise ValueError("Stornierte Rückmeldung nicht gefunden.")
+        order = self.get_order(int(session["order_id"]))
+        if order is None:
+            raise ValueError("Auftrag nicht gefunden.")
+        if int(order["completed_quantity"]) + int(session["completed_quantity"] or 0) > int(order["original_quantity"]):
+            raise ValueError("Die Wiederherstellung würde die Auftragsmenge überschreiten.")
+        self.update_field("session", session_id, "status", "abgeschlossen", reason="Stornierung aufgehoben")
+        self._sync_order_status(int(session["order_id"]))
+
+    def permanently_delete_voided_session(self, session_id: int) -> None:
+        session = self.get_session(session_id)
+        if session is None or session["status"] != "storniert":
+            raise ValueError("Nur stornierte Rückmeldungen können endgültig gelöscht werden.")
+        with self.connect() as connection:
+            connection.execute("DELETE FROM shift_plan_items WHERE session_id = ?", (session_id,))
+            connection.execute(
+                "DELETE FROM correction_log WHERE entity_type = 'session' AND entity_id = ?",
+                (session_id,),
+            )
+            connection.execute("DELETE FROM work_sessions WHERE id = ?", (session_id,))
+        self._sync_order_status(int(session["order_id"]))
+
+    def _sync_order_status(self, order_id: int) -> None:
+        order = self.get_order(order_id)
+        if order is None or order["status"] == "archiviert":
+            return
+        status = (
+            "vollstaendig_erledigt" if int(order["open_quantity"]) <= 0
+            else "teilweise_erledigt" if int(order["completed_quantity"]) else "offen"
+        )
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE orders SET status = ?, updated_at = ? WHERE id = ?",
+                (status, self._now(), order_id),
+            )
+
     def update_order(
         self,
         order_id: int,
         *,
+        order_number: str | None = None,
         die_number: str,
         operation: str,
         original_quantity: int,
@@ -730,7 +844,15 @@ class WerkMateDatabase:
         if original_quantity <= 0 or seconds_per_piece <= 0:
             raise ValueError("Menge und Vorgabezeit müssen größer als null sein.")
 
+        resolved_number = (order_number or str(current["order_number"])).strip()
+        if not resolved_number:
+            raise ValueError("Die Auftragsnummer darf nicht leer sein.")
+        existing = self.find_order(resolved_number)
+        if existing is not None and int(existing["id"]) != order_id:
+            raise ValueError("Diese Auftragsnummer ist bereits gespeichert.")
+
         changes = {
+            "order_number": resolved_number,
             "die_number": die_number.strip(),
             "operation": operation.strip(),
             "original_quantity": original_quantity,
@@ -766,6 +888,7 @@ class WerkMateDatabase:
         limit: int = 100,
         search: str = "",
         status: str = "",
+        include_voided: bool = False,
     ) -> list[dict[str, Any]]:
         conditions: list[str] = []
         parameters: list[Any] = []
@@ -779,6 +902,8 @@ class WerkMateDatabase:
         if status.strip():
             conditions.append("ws.status = ?")
             parameters.append(status.strip())
+        elif not include_voided:
+            conditions.append("ws.status != 'storniert'")
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         parameters.append(limit)
         with self.connect() as connection:
@@ -876,7 +1001,7 @@ class WerkMateDatabase:
         with history_path.open("w", encoding="utf-8-sig", newline="") as handle:
             writer = csv.writer(handle, delimiter=";")
             writer.writerow(history_fields)
-            for item in self.history(limit=1_000_000):
+            for item in self.history(limit=1_000_000, include_voided=True):
                 writer.writerow((
                     item["id"], item["order_number"], item["die_number"], item["operation"],
                     item["reported_started_at"], item["target_end"], item["reported_ended_at"],

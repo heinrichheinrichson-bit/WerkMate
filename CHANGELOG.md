@@ -4,6 +4,18 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.20.0] - 2026-08-26
+
+### Neu
+
+- Aufträge duplizieren und Kopien direkt anpassen
+- Auftragsnummern und unvollständige Schnellstartdaten nachträglich ergänzen
+- Auftrags-Papierkorb mit Wiederherstellen und endgültigem Löschen
+- Rückmeldungen stornieren, ohne Mengen oder Guthaben weiter zu beeinflussen
+- Getrennter Storno-Papierkorb mit Wiederherstellung und endgültiger Bereinigung
+- Normale Auftrags- und Historienlisten bleiben frei von archiviertem Testmüll
+- Automatische Datenbankmigration auf Schema-Version 7
+
 ## [0.19.0] - 2026-08-26
 
 ### Neu
