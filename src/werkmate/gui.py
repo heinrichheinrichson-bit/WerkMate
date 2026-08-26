@@ -137,20 +137,28 @@ class WerkMateApp(tk.Tk):
 
         finish = ttk.LabelFrame(self.dashboard_tab, text="Arbeitseinsatz rückmelden", padding=14)
         finish.pack(fill="x", pady=(20, 0))
-        ttk.Label(finish, text="Fertige Stück:").grid(row=0, column=0, sticky="w")
+        self.finish_actual_label = ttk.Label(finish, text="Tatsächlich bearbeitet:")
+        self.finish_actual_label.grid(row=0, column=0, sticky="w")
         self.finish_quantity = ttk.Entry(finish, width=10)
-        self.finish_quantity.grid(row=0, column=1, padx=(8, 24), sticky="w")
-        ttk.Label(finish, text="Abmeldezeit:").grid(row=0, column=2, sticky="w")
+        self.finish_quantity.grid(row=0, column=1, padx=(8, 18), sticky="w")
+        self.finish_reported_label = ttk.Label(finish, text="Betrieblich rückgemeldet:")
+        self.finish_reported_label.grid(row=0, column=2, sticky="w")
+        self.finish_reported_quantity = ttk.Entry(finish, width=10)
+        self.finish_reported_quantity.grid(row=0, column=3, padx=(8, 18), sticky="w")
+        ttk.Label(finish, text="Abmeldezeit:").grid(row=0, column=4, sticky="w")
         self.finish_time = ttk.Entry(finish, width=19)
-        self.finish_time.grid(row=0, column=3, padx=8, sticky="w")
-        ttk.Button(finish, text="Aktuelle Zeit", command=self._fill_finish_now).grid(row=0, column=4)
+        self.finish_time.grid(row=0, column=5, padx=8, sticky="w")
+        ttk.Button(finish, text="Aktuelle Zeit", command=self._fill_finish_now).grid(row=0, column=6)
         ttk.Label(finish, text="Notiz:").grid(row=1, column=0, sticky="w", pady=(12, 0))
         self.finish_note = ttk.Entry(finish)
-        self.finish_note.grid(row=1, column=1, columnspan=4, sticky="ew", padx=(8, 0), pady=(12, 0))
-        ttk.Button(
+        self.finish_note.grid(row=1, column=1, columnspan=6, sticky="ew", padx=(8, 0), pady=(12, 0))
+        self.partial_finish_button = ttk.Button(
             finish, text="Teilrückmelden / Arbeitseinsatz unterbrechen", style="Primary.TButton",
             command=self.finish_active,
-        ).grid(row=2, column=0, columnspan=3, sticky="ew", pady=(16, 0), padx=(0, 6))
+        )
+        self.partial_finish_button.grid(
+            row=2, column=0, columnspan=4, sticky="ew", pady=(16, 0), padx=(0, 6)
+        )
         self.finish_entire_button = ttk.Button(
             finish,
             text="Gesamtauftrag vollständig beenden",
@@ -158,9 +166,9 @@ class WerkMateApp(tk.Tk):
             command=self.finish_entire_order,
         )
         self.finish_entire_button.grid(
-            row=2, column=3, columnspan=2, sticky="ew", pady=(16, 0), padx=(6, 0)
+            row=2, column=4, columnspan=3, sticky="ew", pady=(16, 0), padx=(6, 0)
         )
-        finish.columnconfigure(3, weight=1)
+        finish.columnconfigure(5, weight=1)
 
     def _build_orders(self) -> None:
         form = ttk.LabelFrame(self.orders_tab, text="Neuen Auftrag anlegen", padding=12)
@@ -186,12 +194,16 @@ class WerkMateApp(tk.Tk):
 
         list_frame = ttk.LabelFrame(self.orders_tab, text="Gespeicherte Aufträge", padding=10)
         list_frame.pack(fill="both", expand=True, pady=14)
-        columns = ("id", "order", "die", "operation", "quantity", "time", "total", "status")
+        columns = (
+            "id", "order", "die", "operation", "processed", "reported",
+            "credit", "open", "time", "status",
+        )
         self.orders_tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=10)
         headings = (
-            "ID", "Auftrag", "Gesenk", "AG", "Offen/Gesamt", "Vorgabe", "Gesamtzeit", "Status"
+            "ID", "Auftrag", "Gesenk", "AG", "Bearbeitet", "Rückgemeldet",
+            "Guthaben", "Noch bearbeiten", "Gesamtzeit", "Status"
         )
-        widths = (45, 115, 90, 70, 100, 90, 165, 135)
+        widths = (40, 105, 75, 55, 90, 95, 170, 95, 155, 125)
         for column, heading, width in zip(columns, headings, widths):
             self.orders_tree.heading(column, text=heading)
             self.orders_tree.column(column, width=width, anchor="center")
@@ -205,6 +217,9 @@ class WerkMateApp(tk.Tk):
         )
         ttk.Button(order_actions, text="Änderungen anzeigen", command=self.show_order_corrections).pack(
             side="left", padx=8
+        )
+        ttk.Button(order_actions, text="Guthaben anmelden", command=self.open_credit_dialog).pack(
+            side="left"
         )
         ttk.Button(order_actions, text="Abgegebenen Auftrag wieder aufnehmen", command=self.resume_selected).pack(
             side="right"
@@ -416,10 +431,10 @@ class WerkMateApp(tk.Tk):
             self.history_tab, columns=columns, show="headings", height=18
         )
         headings = (
-            "Datum", "Auftrag", "Gesenk", "AG", "An-/Abmeldung", "Ist/Soll",
+            "Datum", "Auftrag", "Gesenk", "AG", "An-/Abmeldung", "Bearb./Rückm./Plan",
             "Zeitabweichung", "Stückabweichung", "Status",
         )
-        widths = (80, 105, 70, 50, 145, 65, 205, 175, 100)
+        widths = (80, 105, 70, 50, 145, 115, 205, 175, 100)
         for column, heading, width in zip(columns, headings, widths):
             self.history_tree.heading(column, text=heading)
             self.history_tree.column(column, width=width, anchor="center")
@@ -742,6 +757,93 @@ class WerkMateApp(tk.Tk):
             return
         self.refresh_orders()
 
+    def open_credit_dialog(self) -> None:
+        try:
+            order = self.database.get_order(self.selected_order_id())
+            if order is None:
+                raise ValueError("Auftrag nicht gefunden.")
+            if int(order["credit_quantity"]) <= 0:
+                raise ValueError("Für diesen Auftrag ist kein Guthaben vorhanden.")
+        except ValueError as error:
+            messagebox.showerror("Kein Guthaben", str(error), parent=self)
+            return
+
+        dialog = tk.Toplevel(self)
+        dialog.title(f"Guthaben anmelden · {order['order_number']}")
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+        body = ttk.Frame(dialog, padding=18)
+        body.pack(fill="both", expand=True)
+        credit_minutes = seconds_to_minutes(
+            int(order["credit_quantity"]) * int(order["seconds_per_piece"])
+        )
+        ttk.Label(
+            body,
+            text=f"Verfügbar: {order['credit_quantity']} Stück · {credit_minutes} Minuten Guthaben",
+            style="Title.TLabel",
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 14))
+
+        mode = tk.StringVar(value="quantity")
+        ttk.Radiobutton(body, text="Nach Stückzahl", variable=mode, value="quantity").grid(
+            row=1, column=0, sticky="w"
+        )
+        ttk.Radiobutton(body, text="Nach exakter Zeit in Minuten", variable=mode, value="time").grid(
+            row=1, column=1, columnspan=2, sticky="w"
+        )
+        ttk.Label(body, text="Stück oder Minuten:").grid(row=2, column=0, sticky="w", pady=(12, 0))
+        value_entry = ttk.Entry(body, width=15)
+        value_entry.grid(row=2, column=1, sticky="w", pady=(12, 0))
+        ttk.Label(body, text="Anmeldezeit:").grid(row=3, column=0, sticky="w", pady=(12, 0))
+        start_entry = ttk.Entry(body, width=20)
+        start_entry.insert(0, local_now().strftime("%Y-%m-%d %H:%M"))
+        start_entry.grid(row=3, column=1, sticky="w", pady=(12, 0))
+        ttk.Label(body, text="Schicht:").grid(row=4, column=0, sticky="w", pady=(12, 0))
+        shift_entry = ttk.Combobox(body, values=("1", "2", "3"), state="readonly", width=8)
+        shift_entry.set(str(current_shift_number(local_now())))
+        shift_entry.grid(row=4, column=1, sticky="w", pady=(12, 0))
+        preview = ttk.Label(
+            body,
+            text="Bei Zeitvorgabe zeigt WerkMate nach dem Start den Dezimalwert und Rundungsvorschlag.",
+            style="Muted.TLabel",
+        )
+        preview.grid(row=5, column=0, columnspan=3, sticky="w", pady=(14, 6))
+
+        def start_credit() -> None:
+            try:
+                value = value_entry.get().strip()
+                result = self.service.start_credit(
+                    order_id=int(order["id"]),
+                    reported_start=parse_datetime(start_entry.get()),
+                    shift_number=int(shift_entry.get()),
+                    quantity=int(value) if mode.get() == "quantity" else None,
+                    productive_seconds=(
+                        minutes_to_seconds(value) if mode.get() == "time" else None
+                    ),
+                    note="Guthaben angemeldet",
+                )
+            except (ValueError, TypeError) as error:
+                messagebox.showerror("Guthabenstart nicht möglich", str(error), parent=dialog)
+                return
+            dialog.destroy()
+            self.notified_session_id = None
+            self.refresh_all()
+            self.tabs.select(self.dashboard_tab)
+            messagebox.showinfo(
+                "Guthaben gestartet",
+                f"Geplante Abmeldung: {result['target_end']:%d.%m.%Y %H:%M}\n"
+                f"Rechnerisch: {format_piece_equivalent(result['piece_equivalent'])} Stück\n"
+                f"Rundungsvorschlag: {result['suggested_quantity']} Stück",
+                parent=self,
+            )
+
+        buttons = ttk.Frame(body)
+        buttons.grid(row=6, column=0, columnspan=3, sticky="e", pady=(14, 0))
+        ttk.Button(buttons, text="Abbrechen", command=dialog.destroy).pack(side="left", padx=6)
+        ttk.Button(
+            buttons, text="Guthaben jetzt anmelden", style="Primary.TButton", command=start_credit
+        ).pack(side="left")
+
     def hand_off_selected(self) -> None:
         try:
             order_id = self.selected_order_id()
@@ -796,21 +898,34 @@ class WerkMateApp(tk.Tk):
                 parent=self,
             ):
                 return
-            self.service.finish_work(
-                int(session["id"]),
-                completed_quantity=int(self.finish_quantity.get()),
-                reported_end=reported_end,
-                note=self.finish_note.get(),
-            )
+            if session.get("session_kind") == "credit":
+                reported_quantity = int(self.finish_reported_quantity.get())
+                self.service.finish_credit(
+                    int(session["id"]),
+                    reported_quantity=reported_quantity,
+                    reported_end=reported_end,
+                    note=self.finish_note.get(),
+                )
+            else:
+                completed_quantity = int(self.finish_quantity.get())
+                reported_text = self.finish_reported_quantity.get().strip()
+                self.service.finish_work(
+                    int(session["id"]),
+                    completed_quantity=completed_quantity,
+                    reported_quantity=(int(reported_text) if reported_text else completed_quantity),
+                    reported_end=reported_end,
+                    note=self.finish_note.get(),
+                )
         except (ValueError, TypeError) as error:
             messagebox.showerror("Rückmeldung nicht möglich", str(error), parent=self)
             return
         self.finish_quantity.delete(0, tk.END)
+        self.finish_reported_quantity.delete(0, tk.END)
         self.finish_note.delete(0, tk.END)
         self.refresh_all()
         messagebox.showinfo(
-            "Teilrückmeldung gespeichert",
-            "Der Arbeitseinsatz wurde beendet. Die übrigen Stück bleiben als offener Restauftrag gespeichert.",
+            "Rückmeldung gespeichert",
+            "Bearbeitete und betrieblich rückgemeldete Stück wurden getrennt gespeichert.",
             parent=self,
         )
 
@@ -824,10 +939,21 @@ class WerkMateApp(tk.Tk):
             messagebox.showerror("Fehler", "Auftrag nicht gefunden.", parent=self)
             return
         open_quantity = int(order["open_quantity"])
+        try:
+            reported_text = self.finish_reported_quantity.get().strip()
+            reported_quantity = int(reported_text) if reported_text else open_quantity
+        except ValueError:
+            messagebox.showerror(
+                "Eingabe prüfen",
+                "Die betriebliche Rückmeldemenge muss eine ganze Zahl sein.",
+                parent=self,
+            )
+            return
         if not messagebox.askyesno(
             "Gesamtauftrag vollständig beenden",
-            f"Wirklich alle noch offenen {open_quantity} Stück als fertig bearbeitet rückmelden?\n\n"
-            "Danach ist der Gesamtauftrag vollständig beendet.",
+            f"Wirklich alle noch offenen {open_quantity} Stück als fertig bearbeitet speichern?\n"
+            f"Davon werden heute {reported_quantity} Stück betrieblich rückgemeldet.\n\n"
+            f"Neues Guthaben aus diesem Einsatz: {open_quantity - reported_quantity} Stück.",
             parent=self,
         ):
             return
@@ -844,16 +970,19 @@ class WerkMateApp(tk.Tk):
                 int(session["id"]),
                 reported_end=reported_end,
                 note=self.finish_note.get(),
+                reported_quantity=reported_quantity,
             )
         except (ValueError, TypeError) as error:
             messagebox.showerror("Beenden nicht möglich", str(error), parent=self)
             return
         self.finish_quantity.delete(0, tk.END)
+        self.finish_reported_quantity.delete(0, tk.END)
         self.finish_note.delete(0, tk.END)
         self.refresh_all()
         messagebox.showinfo(
             "Auftrag vollständig beendet",
-            f"Alle {completed} noch offenen Stück wurden als fertig rückgemeldet.",
+            f"Alle {completed} noch offenen Stück wurden als bearbeitet gespeichert. "
+            f"Heute rückgemeldet: {reported_quantity} Stück.",
             parent=self,
         )
 
@@ -882,8 +1011,12 @@ class WerkMateApp(tk.Tk):
             self.orders_tree.insert(
                 "", "end", values=(
                     order["id"], order["order_number"], order["die_number"],
-                    order["operation"], f"{order['open_quantity']}/{order['original_quantity']}",
-                    f"{seconds_to_minutes(order['seconds_per_piece'])} min",
+                    order["operation"],
+                    f"{order['completed_quantity']}/{order['original_quantity']}",
+                    f"{order['reported_quantity']}/{order['original_quantity']}",
+                    f"{order['credit_quantity']} Stk · "
+                    f"{seconds_to_minutes(order['credit_quantity'] * order['seconds_per_piece'])} min",
+                    f"{order['open_quantity']} Stk",
                     format_total_target_time(
                         int(order["original_quantity"]) * int(order["seconds_per_piece"])
                     ),
@@ -912,13 +1045,33 @@ class WerkMateApp(tk.Tk):
             return
         self.cancel_work_button.configure(state="normal")
 
+        is_credit = status.get("session_kind") == "credit"
+        self.finish_actual_label.configure(
+            text="Keine neue Bearbeitung:" if is_credit else "Tatsächlich bearbeitet:"
+        )
+        self.finish_quantity.configure(state="disabled" if is_credit else "normal")
+        self.finish_reported_label.configure(
+            text="Guthaben jetzt rückmelden:" if is_credit else "Betrieblich rückgemeldet:"
+        )
+        self.partial_finish_button.configure(
+            text="Guthaben rückmelden" if is_credit else "Teilrückmelden / Arbeitseinsatz unterbrechen"
+        )
+        self.finish_entire_button.configure(state="disabled" if is_credit else "normal")
+
         self.active_title.configure(
             text=f"{status['order_number']} · Ges. {status['die_number']} · {status['operation']}"
         )
-        self.active_details.configure(
-            text=f"Einsatz #{status['id']} · {status['quantity_to_process']} Stück · "
-                 f"{seconds_to_minutes(status['seconds_per_piece'])} min/Stück"
-        )
+        if is_credit:
+            self.active_details.configure(
+                text=f"Guthaben-Einsatz #{status['id']} · "
+                     f"{format_piece_equivalent(status['credit_piece_equivalent'])} Stück rechnerisch · "
+                     f"Rundungsvorschlag {status['quantity_to_process']} Stück"
+            )
+        else:
+            self.active_details.configure(
+                text=f"Arbeitseinsatz #{status['id']} · {status['quantity_to_process']} Stück · "
+                     f"{seconds_to_minutes(status['seconds_per_piece'])} min/Stück"
+            )
         overdue = status["time_state"] == "ueberzogen"
         self.countdown_caption.configure(
             text="RÜCKMELDUNG ÜBERFÄLLIG" if overdue else "BIS GEPLANTER RÜCKMELDUNG"
@@ -928,10 +1081,26 @@ class WerkMateApp(tk.Tk):
             style="Danger.TLabel" if overdue else "Countdown.TLabel",
         )
         self.target_label.configure(
-            text=f"Geplante Rückmeldezeit für {status['quantity_to_process']} Stück: "
-                 f"{display_time(status['target_end'])}"
+            text=(
+                f"Geplante Abmeldezeit für {format_duration(status['credit_planned_seconds'])} Guthabenzeit: "
+                if is_credit else
+                f"Geplante Rückmeldezeit für {status['quantity_to_process']} Stück: "
+            ) + f"{display_time(status['target_end'])}"
         )
-        if "pieces_until_shift_end" in status:
+        if is_credit:
+            self.forecast_label.configure(
+                text=f"Verfügbares Guthaben vor dieser Rückmeldung: {status['credit_quantity']} Stück\n"
+                     f"Du entscheidest beim Abmelden über die tatsächlich gemeldete ganze Stückzahl."
+            )
+            self.order_remaining_label.configure(
+                text=f"Guthabenwert: {status['credit_quantity']} Stück · "
+                     f"{seconds_to_minutes(status['credit_quantity'] * status['seconds_per_piece'])} Minuten"
+            )
+            if not self.finish_reported_quantity.get().strip():
+                self._set_entry(
+                    self.finish_reported_quantity, str(status["quantity_to_process"])
+                )
+        elif "pieces_until_shift_end" in status:
             next_piece_text = ""
             if status["next_piece_finish"] is not None:
                 next_piece_text = (
@@ -944,9 +1113,9 @@ class WerkMateApp(tk.Tk):
                      f"Davon vollständig: {status['pieces_until_shift_end']} Stück"
                      f"{next_piece_text}"
             )
-        else:
+        elif not is_credit:
             self.forecast_label.configure(text="Keine Schicht für die Reststückprognose gewählt.")
-        if "order_open_quantity" in status:
+        if not is_credit and "order_open_quantity" in status:
             remaining = format_duration(status["order_open_seconds"])
             extra = format_duration(status["beyond_shift_seconds"])
             self.order_remaining_label.configure(
@@ -979,11 +1148,14 @@ class WerkMateApp(tk.Tk):
             actual_quantity = (
                 item["completed_quantity"] if item["completed_quantity"] is not None else "–"
             )
+            reported_quantity = (
+                item["reported_quantity"] if item["reported_quantity"] is not None else "–"
+            )
             self.history_tree.insert(
                 "", "end", iid=str(item["id"]), values=(
                     start[:10], item["order_number"], item["die_number"], item["operation"],
                     f"{start[11:]} – {end[11:] if end != '–' else 'offen'}",
-                    f"{actual_quantity}/{item['quantity_to_process']}",
+                    f"{actual_quantity}/{reported_quantity}/{item['quantity_to_process']}",
                     format_time_performance(performance),
                     format_quantity_performance(performance),
                     item["status"],
@@ -1003,6 +1175,9 @@ class WerkMateApp(tk.Tk):
         if session is None:
             return
         performance = calculate_performance(session)
+        credit_change = (
+            int(session["completed_quantity"] or 0) - int(session["reported_quantity"] or 0)
+        )
         messagebox.showinfo(
             "Meldungsdetails",
             f"Auftrag: {session['order_number']}\n"
@@ -1010,7 +1185,9 @@ class WerkMateApp(tk.Tk):
             f"Anmeldung: {display_time(session['reported_started_at'])}\n"
             f"Geplante Rückmeldung: {display_time(session['target_end'])}\n"
             f"Abmeldung: {display_time(session['reported_ended_at'])}\n"
-            f"Fertig gemeldet: {session['completed_quantity'] if session['completed_quantity'] is not None else '–'}\n"
+            f"Tatsächlich bearbeitet: {session['completed_quantity'] if session['completed_quantity'] is not None else '–'}\n"
+            f"Betrieblich rückgemeldet: {session['reported_quantity'] if session['reported_quantity'] is not None else '–'}\n"
+            f"Guthabenänderung: {credit_change:+d} Stück\n"
             f"Zeitabweichung: {format_time_performance(performance)}\n"
             f"Stückabweichung: {format_quantity_performance(performance)}\n"
             f"Notiz: {session['note'] or '–'}",

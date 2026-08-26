@@ -4,6 +4,21 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.11.0] - 2026-08-26
+
+### Hinzugefügt
+
+- Getrennte Speicherung tatsächlich bearbeiteter und betrieblich rückgemeldeter Stück
+- Guthaben je Auftrag, Gesenk und Arbeitsgang in Stück, Minuten und Stunden
+- Sichtbare Werte für Bearbeitet, Rückgemeldet, Guthaben und noch zu bearbeiten
+- Guthaben-Anmeldung nach frei gewählter ganzer Stückzahl
+- Guthaben-Anmeldung nach exakt vorgegebener produktiver Zeit
+- Dezimalstückzahl und normaler Rundungsvorschlag bei einer Zeitvorgabe
+- Freie endgültige Stückentscheidung beim Abmelden des Guthabens
+- Mehrtägiger, stückweiser Verbrauch eines Guthabens
+- Guthabenzeit belegt die Schicht und bestimmt den Start des nächsten Auftrags
+- Automatische Migration bestehender Rückmeldungen auf Datenbankschema 4
+
 ## [0.10.0] - 2026-08-26
 
 ### Hinzugefügt

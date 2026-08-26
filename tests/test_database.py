@@ -134,7 +134,7 @@ def test_second_simultaneous_session_is_rejected(database) -> None:
 def test_session_cannot_exceed_open_quantity(database) -> None:
     order_id = create_order(database)
     start = datetime(2026, 8, 26, 13, 45)
-    with pytest.raises(ValueError, match="offene Auftragsmenge"):
+    with pytest.raises(ValueError, match="verfügbare Auftragsmenge"):
         database.start_session(
             order_id=order_id,
             shift_name="Schicht 2",

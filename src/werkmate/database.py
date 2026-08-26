@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class WerkMateDatabase:
@@ -69,6 +69,9 @@ class WerkMateDatabase:
                     actual_confirmed_at TEXT,
                     reported_ended_at TEXT,
                     completed_quantity INTEGER CHECK(completed_quantity >= 0),
+                    reported_quantity INTEGER CHECK(reported_quantity >= 0),
+                    session_kind TEXT NOT NULL DEFAULT 'work',
+                    planned_seconds INTEGER,
                     note TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'laufend',
                     created_at TEXT NOT NULL,
@@ -132,6 +135,18 @@ class WerkMateDatabase:
                 connection.execute("ALTER TABLE work_sessions ADD COLUMN shift_start TEXT")
             if "shift_end" not in columns:
                 connection.execute("ALTER TABLE work_sessions ADD COLUMN shift_end TEXT")
+            if "reported_quantity" not in columns:
+                connection.execute("ALTER TABLE work_sessions ADD COLUMN reported_quantity INTEGER")
+                connection.execute(
+                    "UPDATE work_sessions SET reported_quantity = completed_quantity "
+                    "WHERE completed_quantity IS NOT NULL"
+                )
+            if "session_kind" not in columns:
+                connection.execute(
+                    "ALTER TABLE work_sessions ADD COLUMN session_kind TEXT NOT NULL DEFAULT 'work'"
+                )
+            if "planned_seconds" not in columns:
+                connection.execute("ALTER TABLE work_sessions ADD COLUMN planned_seconds INTEGER")
             connection.execute(
                 "INSERT OR REPLACE INTO metadata(key, value) VALUES('schema_version', ?)",
                 (str(SCHEMA_VERSION),),
@@ -173,8 +188,11 @@ class WerkMateDatabase:
                 """
                 SELECT o.*,
                        COALESCE(SUM(ws.completed_quantity), 0) AS completed_quantity,
+                       COALESCE(SUM(ws.reported_quantity), 0) AS reported_quantity,
                        o.original_quantity - COALESCE(SUM(ws.completed_quantity), 0)
-                           AS open_quantity
+                           AS open_quantity,
+                       COALESCE(SUM(ws.completed_quantity), 0)
+                           - COALESCE(SUM(ws.reported_quantity), 0) AS credit_quantity
                 FROM orders o
                 LEFT JOIN work_sessions ws ON ws.order_id = o.id
                 WHERE o.id = ?
@@ -213,12 +231,19 @@ class WerkMateDatabase:
         note: str = "",
         shift_start: datetime | None = None,
         shift_end: datetime | None = None,
+        session_kind: str = "work",
+        planned_seconds: int | None = None,
     ) -> int:
         order = self.get_order(order_id)
         if order is None:
             raise ValueError("Auftrag nicht gefunden.")
-        if quantity_to_process <= 0 or quantity_to_process > order["open_quantity"]:
-            raise ValueError("Die Einsatzmenge überschreitet die offene Auftragsmenge.")
+        if quantity_to_process <= 0:
+            raise ValueError("Die Einsatzmenge muss größer als null sein.")
+        available_quantity = (
+            order["credit_quantity"] if session_kind == "credit" else order["open_quantity"]
+        )
+        if quantity_to_process > available_quantity:
+            raise ValueError("Die Einsatzmenge überschreitet die verfügbare Auftragsmenge.")
         if self.active_session() is not None:
             raise ValueError("Es läuft bereits ein persönlicher Arbeitseinsatz.")
         now = self._now()
@@ -226,16 +251,17 @@ class WerkMateDatabase:
             cursor = connection.execute(
                 """
                 INSERT INTO work_sessions(
-                    order_id, shift_name, shift_start, shift_end,
+                    order_id, shift_name, shift_start, shift_end, session_kind, planned_seconds,
                     quantity_to_process, seconds_per_piece,
                     actual_started_at, reported_started_at, target_end,
                     pause_seconds, note, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     order_id, shift_name,
                     shift_start.isoformat() if shift_start else None,
                     shift_end.isoformat() if shift_end else None,
+                    session_kind, planned_seconds,
                     quantity_to_process, seconds_per_piece,
                     actual_started_at.isoformat(), reported_started_at.isoformat(),
                     target_end.isoformat(), pause_seconds, note.strip(), now, now,
@@ -272,6 +298,7 @@ class WerkMateDatabase:
         session_id: int,
         *,
         completed_quantity: int,
+        reported_quantity: int | None = None,
         actual_confirmed_at: datetime,
         reported_ended_at: datetime,
         note: str = "",
@@ -284,19 +311,25 @@ class WerkMateDatabase:
         order = self.get_order(int(session["order_id"]))
         if order is None or completed_quantity > order["open_quantity"]:
             raise ValueError("Die Rückmeldung überschreitet die offene Auftragsmenge.")
+        effective_reported = completed_quantity if reported_quantity is None else reported_quantity
+        if effective_reported < 0:
+            raise ValueError("Die betriebliche Rückmeldemenge ist ungültig.")
+        available_to_report = int(order["credit_quantity"]) + completed_quantity
+        if effective_reported > available_to_report:
+            raise ValueError("Es können nicht mehr Stück rückgemeldet als bearbeitet werden.")
 
         now = self._now()
         with self.connect() as connection:
             connection.execute(
                 """
                 UPDATE work_sessions
-                SET completed_quantity = ?, actual_confirmed_at = ?,
+                SET completed_quantity = ?, reported_quantity = ?, actual_confirmed_at = ?,
                     reported_ended_at = ?, note = ?, status = 'abgeschlossen',
                     updated_at = ?
                 WHERE id = ?
                 """,
                 (
-                    completed_quantity, actual_confirmed_at.isoformat(),
+                    completed_quantity, effective_reported, actual_confirmed_at.isoformat(),
                     reported_ended_at.isoformat(), note.strip(), now, session_id,
                 ),
             )

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime, time, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from .database import WerkMateDatabase
 from .models import Shift
 from .timecalc import (
+    add_productive_duration,
     possible_complete_pieces,
     productive_duration_between,
     standard_shift,
@@ -244,6 +245,16 @@ class WerkMateService:
         session["time_state"] = "verbleibend" if difference.total_seconds() >= 0 else "ueberzogen"
         session["time_seconds"] = abs(int(difference.total_seconds()))
 
+        if session.get("session_kind") == "credit":
+            order = self.database.get_order(int(session["order_id"]))
+            session["credit_quantity"] = int(order["credit_quantity"]) if order else 0
+            planned_seconds = int(session["planned_seconds"] or 0)
+            session["credit_planned_seconds"] = planned_seconds
+            session["credit_piece_equivalent"] = (
+                Decimal(planned_seconds) / Decimal(int(session["seconds_per_piece"]))
+            )
+            return session
+
         if session["shift_end"]:
             shift_end = datetime.fromisoformat(session["shift_end"])
             # Die verrechenbare Pause steckt vor Soll-Ende. Für die Prognose
@@ -290,6 +301,7 @@ class WerkMateService:
         session_id: int,
         *,
         completed_quantity: int,
+        reported_quantity: int | None = None,
         reported_end: datetime,
         actual_confirmation: datetime | None = None,
         note: str = "",
@@ -297,6 +309,7 @@ class WerkMateService:
         self.database.complete_session(
             session_id,
             completed_quantity=completed_quantity,
+            reported_quantity=reported_quantity,
             actual_confirmed_at=(
                 actual_confirmation or datetime.now().astimezone().replace(tzinfo=None)
             ),
@@ -311,6 +324,7 @@ class WerkMateService:
         reported_end: datetime,
         actual_confirmation: datetime | None = None,
         note: str = "",
+        reported_quantity: int | None = None,
     ) -> int:
         session = self.database.get_session(session_id)
         if session is None:
@@ -322,6 +336,7 @@ class WerkMateService:
         self.finish_work(
             session_id,
             completed_quantity=quantity,
+            reported_quantity=reported_quantity,
             reported_end=reported_end,
             actual_confirmation=actual_confirmation,
             note=note,
@@ -330,3 +345,94 @@ class WerkMateService:
 
     def cancel_work(self, session_id: int, *, reason: str = "Fehlstart") -> None:
         self.database.cancel_session(session_id, reason=reason)
+
+    def start_credit(
+        self,
+        *,
+        order_id: int,
+        reported_start: datetime,
+        shift_number: int,
+        quantity: int | None = None,
+        productive_seconds: int | None = None,
+        note: str = "",
+    ) -> dict:
+        order = self.database.get_order(order_id)
+        if order is None:
+            raise ValueError("Auftrag nicht gefunden.")
+        credit_quantity = int(order["credit_quantity"])
+        if credit_quantity <= 0:
+            raise ValueError("Für diesen Auftrag ist kein Guthaben vorhanden.")
+        seconds_per_piece = int(order["seconds_per_piece"])
+        if quantity is not None:
+            if quantity <= 0 or quantity > credit_quantity:
+                raise ValueError("Die Guthabenstückzahl ist ungültig.")
+            planned_seconds = quantity * seconds_per_piece
+            suggested_quantity = quantity
+            mode = "quantity"
+        elif productive_seconds is not None:
+            if productive_seconds <= 0:
+                raise ValueError("Die Guthabenzeit muss größer als null sein.")
+            equivalent = Decimal(productive_seconds) / Decimal(seconds_per_piece)
+            suggested_quantity = int(
+                equivalent.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            )
+            suggested_quantity = max(1, min(suggested_quantity, credit_quantity))
+            planned_seconds = productive_seconds
+            mode = "time"
+        else:
+            raise ValueError("Bitte Guthabenstückzahl oder Guthabenzeit angeben.")
+
+        shift = shift_for_start(shift_number, reported_start)
+        calculated_end = add_productive_duration(
+            reported_start, timedelta(seconds=planned_seconds), shift.breaks
+        )
+        pause_seconds = int(
+            (calculated_end - reported_start).total_seconds() - planned_seconds
+        )
+        session_id = self.database.start_session(
+            order_id=order_id,
+            shift_name=shift.name,
+            shift_start=shift.start,
+            shift_end=shift.end,
+            quantity_to_process=suggested_quantity,
+            seconds_per_piece=seconds_per_piece,
+            actual_started_at=datetime.now().astimezone().replace(tzinfo=None),
+            reported_started_at=reported_start,
+            target_end=calculated_end,
+            pause_seconds=pause_seconds,
+            note=note,
+            session_kind="credit",
+            planned_seconds=planned_seconds,
+        )
+        return {
+            "session_id": session_id,
+            "mode": mode,
+            "suggested_quantity": suggested_quantity,
+            "piece_equivalent": Decimal(planned_seconds) / Decimal(seconds_per_piece),
+            "planned_seconds": planned_seconds,
+            "target_end": calculated_end,
+            "credit_before": credit_quantity,
+        }
+
+    def finish_credit(
+        self,
+        session_id: int,
+        *,
+        reported_quantity: int,
+        reported_end: datetime,
+        actual_confirmation: datetime | None = None,
+        note: str = "",
+    ) -> None:
+        session = self.database.get_session(session_id)
+        if session is None or session["session_kind"] != "credit":
+            raise ValueError("Guthabeneinsatz nicht gefunden.")
+        self.database.complete_session(
+            session_id,
+            completed_quantity=0,
+            reported_quantity=reported_quantity,
+            actual_confirmed_at=(
+                actual_confirmation or datetime.now().astimezone().replace(tzinfo=None)
+            ),
+            reported_ended_at=reported_end,
+            note=note,
+        )

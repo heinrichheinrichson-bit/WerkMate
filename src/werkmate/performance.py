@@ -27,8 +27,15 @@ def calculate_performance(session: dict) -> PerformanceResult | None:
     reported_end = datetime.fromisoformat(str(session["reported_ended_at"]))
     planned_end = datetime.fromisoformat(str(session["target_end"]))
     time_delta = int((reported_end - planned_end).total_seconds())
-    planned_seconds = planned_quantity * seconds_per_piece
-    quantity_delta = int(session["completed_quantity"]) - planned_quantity
+    planned_seconds = int(session.get("planned_seconds") or planned_quantity * seconds_per_piece)
+    measured_quantity = (
+        session.get("reported_quantity")
+        if session.get("session_kind") == "credit"
+        else session.get("completed_quantity")
+    )
+    if measured_quantity is None:
+        return None
+    quantity_delta = int(measured_quantity) - planned_quantity
     return PerformanceResult(
         time_delta_seconds=time_delta,
         time_delta_percent=time_delta / planned_seconds * 100,

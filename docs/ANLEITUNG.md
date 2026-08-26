@@ -1,4 +1,4 @@
-# WerkMate 0.10.0 – Anleitung
+# WerkMate 0.11.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -156,10 +156,12 @@ Programm geöffnet ist.
 
 ## 7. Teilmenge oder Auftrag rückmelden
 
-1. Trage bei **Fertige Stück** die von dir tatsächlich fertig bearbeitete Menge ein.
-2. Trage die gewünschte Abmeldezeit ein oder klicke auf **Aktuelle Zeit**.
-3. Ergänze bei Bedarf eine Meldungsnotiz.
-4. Entscheide zwischen zwei Aktionen:
+1. Trage bei **Tatsächlich bearbeitet** die wirklich fertiggestellte Menge ein.
+2. Trage bei **Betrieblich rückgemeldet** die heute gemeldete Menge ein. Bleibt
+   das Feld leer, verwendet WerkMate automatisch die bearbeitete Menge.
+3. Trage die gewünschte Abmeldezeit ein oder klicke auf **Aktuelle Zeit**.
+4. Ergänze bei Bedarf eine Meldungsnotiz.
+5. Entscheide zwischen zwei Aktionen:
 
    - **Teilrückmelden / Arbeitseinsatz unterbrechen:** Nur die eingetragene
      Stückzahl wird gemeldet. Der übrige Auftrag bleibt offen.
@@ -179,7 +181,50 @@ Beispiel:
 Der Auftrag bleibt als teilweise erledigt gespeichert. Die vier offenen Stücke
 können an einem späteren Tag erneut gestartet werden.
 
-## 8. Einen versehentlich gestarteten Einsatz abbrechen
+## 8. Guthaben erzeugen und später rückmelden
+
+Guthaben entsteht, wenn mehr Stück tatsächlich bearbeitet als am selben Tag
+betrieblich rückgemeldet werden.
+
+Beispiel für Auftrag 4261:
+
+- Gesamtmenge: 40 Stück
+- tatsächlich bearbeitet: 40/40
+- heute betrieblich rückgemeldet: 18/40
+- Guthaben: 22 Stück
+- Vorgabe: 15 Minuten/Stück
+- Guthabenwert: 330 Minuten beziehungsweise 5 h 30 min
+- noch tatsächlich zu bearbeiten: 0 Stück
+
+### Guthaben nach Stückzahl anmelden
+
+1. Auftrag in der Auftragsliste markieren.
+2. **Guthaben anmelden** wählen.
+3. **Nach Stückzahl** aktivieren und beispielsweise 10 eingeben.
+4. Anmeldezeit und Schicht prüfen.
+5. Guthabeneinsatz starten und zur angezeigten Zeit rückmelden.
+
+Die 10 Stück belegen 150 Minuten produktive Schichtzeit. Danach bleiben im
+Beispiel 12 Guthabenstücke erhalten.
+
+### Guthaben nach exakter Zeit anmelden
+
+Wenn der Vorgesetzte beispielsweise zwei Stunden vorgibt:
+
+1. **Nach exakter Zeit in Minuten** wählen.
+2. `120` Minuten eingeben.
+3. WerkMate zeigt die rechnerische Dezimalstückzahl und einen normal gerundeten
+   Vorschlag.
+4. Beim Abmelden entscheidest du selbst über die tatsächlich einzutragende ganze
+   Stückzahl.
+
+Bei 17 min/Stück entsprechen 120 Minuten rechnerisch 7,06 Stück; WerkMate
+schlägt 7 vor. Du kannst beim Abmelden trotzdem 7 oder 8 eingeben. Die gewählten
+120 Minuten bestimmen exakt den Startzeitpunkt des nächsten Auftrags. Das
+verbleibende Guthaben berechnet sich anschließend aus deiner eingegebenen
+Stückzahl. Guthaben kann beliebig über mehrere Tage verteilt werden.
+
+## 9. Einen versehentlich gestarteten Einsatz abbrechen
 
 Klicke beim laufenden Auftrag auf **Fehlstart / Arbeitseinsatz abbrechen**. Es
 werden keine Stück gemeldet und der Auftrag bleibt vollständig offen. Danach
@@ -188,7 +233,7 @@ kannst du ihn mit korrigierter Menge, Zeit oder Schicht neu starten.
 Der abgebrochene Einsatz bleibt mit Status `abgebrochen` in der Historie, damit
 keine Daten unbemerkt verschwinden.
 
-## 9. Einen Restauftrag später fortsetzen
+## 10. Einen Restauftrag später fortsetzen
 
 1. Öffne den Reiter **Aufträge**.
 2. Markiere den teilweise erledigten Auftrag.
@@ -199,7 +244,7 @@ keine Daten unbemerkt verschwinden.
 Jeder Arbeitseinsatz wird separat gespeichert. Dadurch bleiben verschiedene
 Tage und Teilrückmeldungen nachvollziehbar.
 
-## 10. Historie ansehen
+## 11. Historie ansehen
 
 Der Reiter **Historie** zeigt alle persönlichen Arbeitseinsätze mit:
 
@@ -235,7 +280,7 @@ bewertet.
 Der Zeitprozentsatz verwendet die Vorgabezeit der geplanten Einsatzmenge als
 Basis. Der Stückprozentsatz verwendet die geplante Stückzahl als Basis.
 
-## 11. Gespeicherte Aufträge korrigieren
+## 12. Gespeicherte Aufträge korrigieren
 
 Markiere einen Auftrag und klicke auf **Auftrag bearbeiten** oder doppelklicke
 auf seine Tabellenzeile. Gesenknummer, Arbeitsgang, Gesamtmenge, aktuelle
@@ -248,7 +293,7 @@ korrigiert wurde.
 Ein abgegebener Restauftrag kann markiert und mit **Abgegebenen Auftrag wieder
 aufnehmen** erneut in die persönliche Bearbeitung übernommen werden.
 
-## 12. Wo liegen die Daten?
+## 13. Wo liegen die Daten?
 
 Die lokale Datenbank liegt standardmäßig hier:
 
@@ -264,7 +309,7 @@ C:\Users\DEIN-NAME\AppData\Local\WerkMate\werkmate.sqlite3
 
 Die Daten werden nicht automatisch zu GitHub oder in eine Cloud übertragen.
 
-## 13. Datensicherung
+## 14. Datensicherung
 
 Klicke oben rechts auf **Daten sichern**, wähle einen Zielordner und speichere
 die vorgeschlagene `.sqlite3`-Datei. WerkMate erzeugt eine konsistente Kopie
@@ -280,7 +325,7 @@ Zur Wiederherstellung WerkMate schließen und die gesicherte Datei wieder an
 denselben Ort kopieren. Eine komfortable Sicherungsfunktion in der Oberfläche
 ist für eine spätere Version vorgesehen.
 
-## 14. Bekannte Grenzen dieses Stands
+## 15. Bekannte Grenzen dieses Stands
 
 - noch keine Android- oder iOS-App
 - keine zuverlässige Benachrichtigung bei geschlossenem Programm
@@ -291,7 +336,7 @@ ist für eine spätere Version vorgesehen.
 Der Rechenkern, die lokale Speicherung und der grundlegende persönliche Ablauf
 sind bereits vorhanden und automatisiert getestet.
 
-## 15. Optionale Konsolenbedienung
+## 16. Optionale Konsolenbedienung
 
 Die bisherige Konsolenoberfläche bleibt erhalten. Ihre Befehle sind in
 [`KONSOLEN-MVP.md`](KONSOLEN-MVP.md) dokumentiert.
