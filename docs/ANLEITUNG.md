@@ -1,8 +1,9 @@
-# WerkMate 0.18.0 – Anleitung
+# WerkMate 0.19.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
-ist dieser Stand noch nicht.
+liegt jetzt als erster getrennter Flutter-Prototyp unter `mobile` vor. Die
+vollständige PC-Funktionalität und dauerhafte mobile Speicherung folgen später.
 
 ## 1. Voraussetzungen
 

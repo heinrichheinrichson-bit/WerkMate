@@ -4,6 +4,18 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.19.0] - 2026-08-26
+
+### Neu
+
+- Erster echter Flutter-Prototyp für Android und später iOS
+- Mobiler Schnellstart mit minimalen Pflichtangaben
+- Schichtprognose inklusive fester Pausen und Dezimalstückzahl
+- Mobile Ansicht für laufenden Einsatz und geplante Rückmeldezeit
+- Getrennte Rückmeldung von bearbeiteten und betrieblich gemeldeten Stück
+- Einfache mobile Historie mit Guthabenänderung
+- Installierbare Android-Release-APK lokal erfolgreich gebaut
+
 ## [0.18.0] - 2026-08-26
 
 ### Neu

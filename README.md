@@ -7,11 +7,11 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.18.0 – eigenständige Windows-EXE**
+**Version 0.19.0 – erster Android-/iOS-Flutter-Prototyp**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern
-aufgesetzt.
+aufgesetzt. Ein erster getrennter Flutter-Prototyp liegt inzwischen unter `mobile`.
 
 ## Lokale Entwicklung
 
