@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.12.0 – verkettete Schichtplanung für Aufträge und Guthaben**
+**Version 0.12.1 – vereinfachte Katalogeingabe und verkettete Schichtplanung**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern

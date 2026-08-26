@@ -1,4 +1,4 @@
-# WerkMate 0.12.0 – Anleitung
+# WerkMate 0.12.1 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -78,7 +78,7 @@ Restschicht vollständig mögliche Einsatzmenge und startet ihn sofort.
 
 - Gesenknummer und optionale Beschreibung
 - Arbeitsgangcode, beispielsweise `FP1`
-- verständliche Arbeitsgangbezeichnung
+- optionale verständliche Arbeitsgangbezeichnung
 - aktuelle Vorgabezeit pro Stück
 - optionale Notiz zum Gesenk
 
@@ -89,6 +89,13 @@ sich dadurch nicht.
 
 Nicht mehr benötigte Vorgaben können deaktiviert werden. Sie verschwinden aus
 der Auswahl, ohne historische Daten zu löschen.
+
+Der **AG-Code** ist die kurze betriebliche Kennung wie `FP`, `FP1`, `ZP2` oder
+`KR`. Er ist erforderlich, weil ein Gesenk mehrere Arbeitsgänge mit
+unterschiedlichen Zeiten besitzen kann. Die ausgeschriebene Bezeichnung ist
+optional. Bleibt sie leer, verwendet WerkMate automatisch den AG-Code als
+Anzeigetext. Für einen einfachen Katalogeintrag genügen daher Gesenknummer,
+AG-Code und Minuten pro Stück.
 
 ## 5. Einen Arbeitseinsatz starten
 

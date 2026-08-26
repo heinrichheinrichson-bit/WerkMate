@@ -552,8 +552,9 @@ class WerkMateDatabase:
         die_number = die_number.strip()
         operation_code = operation_code.strip().upper()
         operation_name = operation_name.strip()
-        if not die_number or not operation_code or not operation_name:
-            raise ValueError("Gesenknummer, Arbeitsgangcode und Bezeichnung sind Pflichtfelder.")
+        if not die_number or not operation_code:
+            raise ValueError("Gesenknummer und AG-Code sind Pflichtfelder.")
+        operation_name = operation_name or operation_code
         if seconds_per_piece <= 0:
             raise ValueError("Die Vorgabezeit muss größer als null sein.")
         now = self._now()

@@ -50,3 +50,13 @@ def test_catalog_search_and_deactivation(tmp_path) -> None:
     assert len(database.list_catalog(include_inactive=True)) == 1
     assert database.standards_for_die("9120") == []
 
+
+def test_optional_operation_name_falls_back_to_code(tmp_path) -> None:
+    database = WerkMateDatabase(tmp_path / "db.sqlite3")
+    database.save_standard(
+        die_number="8720", operation_code="fp", operation_name="",
+        seconds_per_piece=1_200,
+    )
+    standard = database.standards_for_die("8720")[0]
+    assert standard["operation_code"] == "FP"
+    assert standard["operation_name"] == "FP"

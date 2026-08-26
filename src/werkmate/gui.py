@@ -595,7 +595,10 @@ class WerkMateApp(tk.Tk):
     def _build_catalog(self) -> None:
         form = ttk.LabelFrame(self.catalog_tab, text="Vorgabe anlegen oder aktualisieren", padding=12)
         form.pack(fill="x")
-        fields = ("Gesenknummer", "AG-Code", "Bezeichnung", "min/Stück", "Gesenkbeschreibung")
+        fields = (
+            "Gesenknummer", "AG-Code", "Bezeichnung (optional)",
+            "min/Stück", "Gesenkbeschreibung (optional)",
+        )
         self.catalog_entries: list[ttk.Entry] = []
         for column, label in enumerate(fields):
             ttk.Label(form, text=label).grid(row=0, column=column, sticky="w", padx=4)

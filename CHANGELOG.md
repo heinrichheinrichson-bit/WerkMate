@@ -4,6 +4,15 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.12.1] - 2026-08-26
+
+### Geändert
+
+- Arbeitsgangbezeichnung im Gesenk-Katalog ist nicht mehr verpflichtend
+- Leere Bezeichnung wird automatisch mit dem AG-Code gefüllt
+- Pflicht sind nur Gesenknummer, AG-Code und Vorgabezeit
+- Optionale Felder sind in der Oberfläche eindeutig gekennzeichnet
+
 ## [0.12.0] - 2026-08-26
 
 ### Hinzugefügt
