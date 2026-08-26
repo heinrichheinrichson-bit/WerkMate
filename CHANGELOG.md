@@ -4,6 +4,16 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.22.0] - 2026-08-26
+
+### Neu
+
+- Reihenfolge der Planpunkte per Drag & Drop ändern
+- Zusätzliche Pfeiltasten für präzise und touchfreundliche Sortierung
+- Zukünftige Aufträge während eines laufenden Planpunkts einfügen und umsortieren
+- Aktiver Auftrag bleibt vor versehentlichem Verschieben geschützt
+- Aktualisierte Restplanung zunächst ab dem geplanten, später ab dem tatsächlichen Ende
+
 ## [0.21.0] - 2026-08-26
 
 ### Neu

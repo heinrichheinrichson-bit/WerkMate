@@ -263,17 +263,41 @@ class WerkMateDatabase:
             raise ValueError("Ungültige Schichtnummer.")
         now = self._now()
         with self.connect() as connection:
-            running = connection.execute(
+            running_item = connection.execute(
                 """
-                SELECT COUNT(*) AS amount
+                SELECT spi.plan_id, spi.position
                 FROM shift_plan_items spi JOIN shift_plans sp ON sp.id = spi.plan_id
                 WHERE sp.status = 'aktiv' AND spi.status = 'laufend'
+                ORDER BY spi.id DESC LIMIT 1
                 """
-            ).fetchone()["amount"]
-            if running:
-                raise ValueError(
-                    "Während eines laufenden Planpunkts kann der Schichtplan nicht ersetzt werden."
+            ).fetchone()
+            if running_item is not None:
+                plan_id = int(running_item["plan_id"])
+                connection.execute(
+                    "DELETE FROM shift_plan_items WHERE plan_id = ? AND status = 'offen'",
+                    (plan_id,),
                 )
+                for offset, item in enumerate(items, start=1):
+                    connection.execute(
+                        """
+                        INSERT INTO shift_plan_items(
+                            plan_id, position, order_id, mode, value, start_override,
+                            created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            plan_id, int(running_item["position"]) + offset,
+                            int(item["order_id"]), str(item["mode"]), item.get("value"),
+                            item.get("start_override").isoformat()
+                            if isinstance(item.get("start_override"), datetime)
+                            else item.get("start_override"), now, now,
+                        ),
+                    )
+                connection.execute(
+                    "UPDATE shift_plans SET shift_number = ?, updated_at = ? WHERE id = ?",
+                    (shift_number, now, plan_id),
+                )
+                return plan_id
             connection.execute(
                 "UPDATE shift_plans SET status = 'ersetzt', updated_at = ? WHERE status = 'aktiv'",
                 (now,),

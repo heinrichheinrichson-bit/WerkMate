@@ -497,6 +497,9 @@ class WerkMateApp(tk.Tk):
             self.plan_queue.heading(column, text=heading)
             self.plan_queue.column(column, width=width, anchor="center")
         self.plan_queue.pack(fill="x")
+        self._plan_drag_source: int | None = None
+        self.plan_queue.bind("<ButtonPress-1>", self._plan_drag_start)
+        self.plan_queue.bind("<ButtonRelease-1>", self._plan_drag_release)
         queue_buttons = ttk.Frame(queue_frame)
         queue_buttons.pack(fill="x", pady=(6, 0))
         ttk.Button(queue_buttons, text="Ausgewählten entfernen", command=self.remove_shift_plan_item).pack(
@@ -505,6 +508,12 @@ class WerkMateApp(tk.Tk):
         ttk.Button(
             queue_buttons, text="Startzeit bearbeiten", command=self.edit_plan_item_start
         ).pack(side="left", padx=6)
+        ttk.Button(queue_buttons, text="▲", width=4, command=lambda: self.move_plan_item(-1)).pack(
+            side="left"
+        )
+        ttk.Button(queue_buttons, text="▼", width=4, command=lambda: self.move_plan_item(1)).pack(
+            side="left", padx=(3, 6)
+        )
         ttk.Button(queue_buttons, text="Plan leeren", command=self.clear_shift_plan).pack(
             side="left", padx=6
         )
@@ -523,12 +532,13 @@ class WerkMateApp(tk.Tk):
         self.plan_total_label.pack(anchor="w", pady=(0, 8))
         self.plan_cards_frame = ttk.Frame(result_frame)
         self.plan_cards_frame.pack(fill="both", expand=True)
-        ttk.Button(
+        self.plan_start_button = ttk.Button(
             result_frame,
             text="Ersten Planpunkt starten",
             style="Primary.TButton",
             command=self.start_first_shift_plan_item,
-        ).pack(fill="x", pady=(8, 0))
+        )
+        self.plan_start_button.pack(fill="x", pady=(8, 0))
 
     def refresh_plan_orders(self) -> None:
         self._plan_order_map = {}
@@ -647,6 +657,39 @@ class WerkMateApp(tk.Tk):
         except ValueError as error:
             messagebox.showerror("Ungültige Startzeit", str(error), parent=self); return
         self.refresh_shift_plan_queue()
+
+    def move_plan_item(self, direction: int) -> None:
+        selected = self.plan_queue.selection()
+        if not selected:
+            return
+        source = int(selected[0])
+        target = source + direction
+        if target < 0 or target >= len(self.shift_plan_items):
+            return
+        item = self.shift_plan_items.pop(source)
+        self.shift_plan_items.insert(target, item)
+        self.refresh_shift_plan_queue()
+        self.plan_queue.selection_set(str(target))
+        self.render_shift_plan_cards([])
+
+    def _plan_drag_start(self, event) -> None:
+        row = self.plan_queue.identify_row(event.y)
+        self._plan_drag_source = int(row) if row else None
+
+    def _plan_drag_release(self, event) -> None:
+        source = self._plan_drag_source
+        self._plan_drag_source = None
+        target_row = self.plan_queue.identify_row(event.y)
+        if source is None or not target_row:
+            return
+        target = int(target_row)
+        if source == target:
+            return
+        item = self.shift_plan_items.pop(source)
+        self.shift_plan_items.insert(target, item)
+        self.refresh_shift_plan_queue()
+        self.plan_queue.selection_set(str(target))
+        self.render_shift_plan_cards([])
 
     def refresh_shift_plan_queue(self) -> None:
         self.plan_queue.delete(*self.plan_queue.get_children())
@@ -832,14 +875,17 @@ class WerkMateApp(tk.Tk):
                     if saved.get("start_override") else None
                 ),
             })
-        self._set_entry(
-            self.plan_start,
-            datetime.fromisoformat(plan["reported_start"]).strftime("%Y-%m-%d %H:%M"),
+        active = self.database.active_session()
+        effective_start = (
+            datetime.fromisoformat(active["target_end"])
+            if active is not None else datetime.fromisoformat(plan["reported_start"])
         )
+        self._set_entry(self.plan_start, effective_start.strftime("%Y-%m-%d %H:%M"))
         self.plan_shift.set(str(plan["shift_number"]))
         self.refresh_shift_plan_queue()
         self.plan_saved_label.configure(text="✓ gespeicherten Plan geladen")
-        if recalculate and self.shift_plan_items and self.database.active_session() is None:
+        self.plan_start_button.configure(state="disabled" if active is not None else "normal")
+        if recalculate and self.shift_plan_items:
             self.calculate_shift_plan(persist=False)
 
     def _refresh_quick_dies(self) -> None:
@@ -2184,6 +2230,10 @@ class WerkMateApp(tk.Tk):
         self._refresh_quick_dies()
         self.refresh_plan_orders()
         self.refresh_history()
+        if hasattr(self, "plan_start_button"):
+            self.plan_start_button.configure(
+                state="disabled" if self.database.active_session() is not None else "normal"
+            )
 
     def _tick(self) -> None:
         self.refresh_dashboard()

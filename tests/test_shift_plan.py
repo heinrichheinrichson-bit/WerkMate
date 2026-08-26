@@ -148,3 +148,29 @@ def test_manual_start_override_creates_a_gap_and_is_persisted(tmp_path) -> None:
     )
     saved = database.active_shift_plan()
     assert saved["items"][1]["start_override"] == "2026-08-26T07:00:00"
+
+
+def test_pending_plan_can_be_reordered_while_first_item_is_running(tmp_path) -> None:
+    database = WerkMateDatabase(tmp_path / "db.sqlite3")
+    service = WerkMateService(database)
+    ids = [service.create_order(
+        order_number=number, die_number=number, operation="FP",
+        original_quantity=2, seconds_per_piece=600,
+    ) for number in ("A", "B", "C")]
+    original = [{"order_id": item, "mode": "work_fixed", "value": 1} for item in ids]
+    database.save_shift_plan(
+        reported_start=datetime(2026, 8, 26, 6), shift_number=1, items=original,
+    )
+    saved = database.active_shift_plan()
+    session_id = service.start_work(
+        order_id=ids[0], quantity=1, reported_start=datetime(2026, 8, 26, 6), shift_number=1,
+    )
+    database.link_shift_plan_session(saved["items"][0]["id"], session_id)
+
+    database.save_shift_plan(
+        reported_start=datetime(2026, 8, 26, 6, 10), shift_number=1,
+        items=[original[2], original[1]],
+    )
+    updated = database.active_shift_plan()
+    assert [item["order_number"] for item in updated["items"]] == ["A", "C", "B"]
+    assert updated["items"][0]["status"] == "laufend"

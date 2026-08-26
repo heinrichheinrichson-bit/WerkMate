@@ -1,4 +1,4 @@
-# WerkMate 0.21.0 – Anleitung
+# WerkMate 0.22.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -278,6 +278,11 @@ werden neu berechnet. Der Restplan bleibt auch nach dem Schließen erhalten.
 Der berechnete Ablauf erscheint als verbundene Kartenfolge. Jede Karte zeigt
 Auftrag, Gesenk/AG, Start, Ende, Stückzahl und Dauer. Oberhalb stehen sowohl die
 gesamte Uhrzeit des Ablaufs als auch die reine produktive Vorgabezeit.
+
+Die Reihenfolge kann in der Liste über **▲/▼** oder durch Ziehen eines Eintrags
+mit der Maus geändert werden. Auch während der erste Auftrag bereits läuft,
+können zukünftige Planpunkte ergänzt, entfernt oder umsortiert und erneut
+gespeichert werden. Der aktive Auftrag selbst bleibt dabei unverändert.
 
 ## 10. Einen versehentlich gestarteten Einsatz abbrechen
 
