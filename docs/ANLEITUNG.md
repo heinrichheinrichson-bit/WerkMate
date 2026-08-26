@@ -1,4 +1,4 @@
-# WerkMate 0.14.0 – Anleitung
+# WerkMate 0.15.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -330,6 +330,13 @@ Historische Arbeitseinsätze behalten ihre damals gespeicherte Vorgabezeit. Übe
 **Änderungen anzeigen** bleibt nachvollziehbar, wann welcher Auftragswert
 korrigiert wurde.
 
+Abgeschlossene Rückmeldungen können im Reiter **Historie** ausgewählt und über
+**Rückmeldung korrigieren** berichtigt werden. Änderbar sind Anmeldezeit,
+Abmeldezeit, tatsächlich bearbeitete Stück, betrieblich rückgemeldete Stück und
+Notiz. Ein Korrekturgrund ist verpflichtend. **Korrekturprotokoll** zeigt jeden
+alten und neuen Wert samt Zeitpunkt und Begründung. Offene Menge, Guthaben und
+Leistungsabweichungen werden automatisch neu berechnet.
+
 Ein abgegebener Restauftrag kann markiert und mit **Abgegebenen Auftrag wieder
 aufnehmen** erneut in die persönliche Bearbeitung übernommen werden.
 
@@ -385,7 +392,6 @@ das Formular ein. Dauerhaft übernommen werden sie erst mit
 - noch keine Android- oder iOS-App
 - keine zuverlässige Benachrichtigung bei geschlossenem Programm
 - noch keine Wiederherstellung einer Sicherung direkt in der Oberfläche
-- Arbeitseinsätze können noch nicht nachträglich in der Oberfläche korrigiert werden
 - keine Statistiken und Exporte
 
 Der Rechenkern, die lokale Speicherung und der grundlegende persönliche Ablauf

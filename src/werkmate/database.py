@@ -608,6 +608,93 @@ class WerkMateDatabase:
                 ),
             )
 
+    def correct_session(
+        self,
+        session_id: int,
+        *,
+        reported_started_at: datetime,
+        reported_ended_at: datetime,
+        completed_quantity: int,
+        reported_quantity: int,
+        note: str,
+        reason: str,
+    ) -> None:
+        current = self.get_session(session_id)
+        if current is None:
+            raise ValueError("Rückmeldung nicht gefunden.")
+        if current["status"] != "abgeschlossen":
+            raise ValueError("Nur abgeschlossene Rückmeldungen können korrigiert werden.")
+        if not reason.strip():
+            raise ValueError("Bitte einen Grund für die Korrektur angeben.")
+        if reported_ended_at < reported_started_at:
+            raise ValueError("Die Abmeldezeit darf nicht vor der Anmeldezeit liegen.")
+        if completed_quantity < 0 or reported_quantity < 0:
+            raise ValueError("Stückzahlen dürfen nicht negativ sein.")
+        if current["session_kind"] == "credit" and completed_quantity != 0:
+            raise ValueError("Ein Guthabeneinsatz enthält keine neu bearbeiteten Stück.")
+
+        now = self._now()
+        with self.connect() as connection:
+            totals = connection.execute(
+                """
+                SELECT o.original_quantity,
+                       COALESCE(SUM(CASE WHEN ws.id != ? THEN ws.completed_quantity END), 0)
+                           AS other_completed,
+                       COALESCE(SUM(CASE WHEN ws.id != ? THEN ws.reported_quantity END), 0)
+                           AS other_reported
+                FROM orders o LEFT JOIN work_sessions ws ON ws.order_id = o.id
+                WHERE o.id = ? GROUP BY o.id
+                """,
+                (session_id, session_id, current["order_id"]),
+            ).fetchone()
+            new_completed_total = int(totals["other_completed"]) + completed_quantity
+            new_reported_total = int(totals["other_reported"]) + reported_quantity
+            if new_completed_total > int(totals["original_quantity"]):
+                raise ValueError("Die Korrektur überschreitet die gesamte Auftragsmenge.")
+            if new_reported_total > new_completed_total:
+                raise ValueError("Insgesamt können nicht mehr Stück gemeldet als bearbeitet sein.")
+
+            old_start = datetime.fromisoformat(str(current["reported_started_at"]))
+            old_target = datetime.fromisoformat(str(current["target_end"]))
+            corrected_target = old_target + (reported_started_at - old_start)
+            changes = {
+                "reported_started_at": reported_started_at.isoformat(),
+                "target_end": corrected_target.isoformat(),
+                "reported_ended_at": reported_ended_at.isoformat(),
+                "completed_quantity": completed_quantity,
+                "reported_quantity": reported_quantity,
+                "note": note.strip(),
+            }
+            for field_name, new_value in changes.items():
+                old_value = current[field_name]
+                if old_value == new_value:
+                    continue
+                connection.execute(
+                    f"UPDATE work_sessions SET {field_name} = ?, updated_at = ? WHERE id = ?",  # noqa: S608
+                    (new_value, now, session_id),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO correction_log(
+                        entity_type, entity_id, field_name, old_value, new_value,
+                        reason, changed_at
+                    ) VALUES ('session', ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        session_id, field_name, json.dumps(old_value), json.dumps(new_value),
+                        reason.strip(), now,
+                    ),
+                )
+            order_status = (
+                "vollstaendig_erledigt"
+                if new_completed_total >= int(totals["original_quantity"])
+                else "teilweise_erledigt"
+            )
+            connection.execute(
+                "UPDATE orders SET status = ?, updated_at = ? WHERE id = ?",
+                (order_status, now, current["order_id"]),
+            )
+
     def hand_off_order(self, order_id: int, *, reason: str = "") -> None:
         self.update_field("order", order_id, "status", "abgegeben", reason=reason)
 

@@ -4,6 +4,17 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.15.0] - 2026-08-26
+
+### Neu
+
+- Abgeschlossene Rückmeldungen können direkt in der Historie korrigiert werden
+- Korrigierbar sind An-/Abmeldezeit, beide Stückzahlen und die Notiz
+- Pflichtfeld für einen nachvollziehbaren Korrekturgrund
+- Unveränderliches Protokoll mit altem Wert, neuem Wert, Zeitpunkt und Grund
+- Automatische Neuberechnung von offener Menge, Guthaben und Abweichungen
+- Schutz vor unmöglichen Gesamtmengen und negativem Auftragsguthaben
+
 ## [0.14.0] - 2026-08-26
 
 ### Neu

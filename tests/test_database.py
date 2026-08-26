@@ -246,3 +246,35 @@ def test_accidental_session_start_can_be_cancelled_without_quantity(database) ->
     assert session["completed_quantity"] == 0
     assert database.get_order(order_id)["open_quantity"] == 24
     assert database.active_session() is None
+
+
+def test_completed_session_correction_recalculates_order_and_keeps_audit(database) -> None:
+    order_id = database.create_order(
+        order_number="KORR", die_number="8720", operation="FP",
+        original_quantity=10, seconds_per_piece=600,
+    )
+    session_id = database.start_session(
+        order_id=order_id, shift_name="Schicht 1", quantity_to_process=5,
+        seconds_per_piece=600, actual_started_at=datetime(2026, 8, 26, 6),
+        reported_started_at=datetime(2026, 8, 26, 6),
+        target_end=datetime(2026, 8, 26, 6, 50), pause_seconds=0,
+    )
+    database.complete_session(
+        session_id, completed_quantity=5, reported_quantity=5,
+        actual_confirmed_at=datetime(2026, 8, 26, 7),
+        reported_ended_at=datetime(2026, 8, 26, 7),
+    )
+    database.correct_session(
+        session_id,
+        reported_started_at=datetime(2026, 8, 26, 6, 10),
+        reported_ended_at=datetime(2026, 8, 26, 7, 5),
+        completed_quantity=7, reported_quantity=5,
+        note="Zählfehler berichtigt", reason="Zettel geprüft",
+    )
+    order = database.get_order(order_id)
+    session = database.get_session(session_id)
+    assert order["completed_quantity"] == 7
+    assert order["credit_quantity"] == 2
+    assert session["target_end"] == datetime(2026, 8, 26, 7).isoformat()
+    fields = {item["field_name"] for item in database.corrections("session", session_id)}
+    assert {"reported_started_at", "target_end", "reported_ended_at", "completed_quantity", "note"} <= fields

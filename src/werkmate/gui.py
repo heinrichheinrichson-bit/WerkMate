@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import tkinter as tk
 from datetime import datetime
@@ -746,8 +747,17 @@ class WerkMateApp(tk.Tk):
             self.history_tree.heading(column, text=heading)
             self.history_tree.column(column, width=width, anchor="center")
         self.history_tree.pack(fill="both", expand=True)
-        ttk.Button(self.history_tab, text="Historie aktualisieren", command=self.refresh_history).pack(
-            anchor="e", pady=(10, 0)
+        actions = ttk.Frame(self.history_tab)
+        actions.pack(fill="x", pady=(10, 0))
+        ttk.Button(actions, text="Details", command=self.show_history_details).pack(side="left")
+        ttk.Button(actions, text="Rückmeldung korrigieren", command=self.edit_history_entry).pack(
+            side="left", padx=6
+        )
+        ttk.Button(actions, text="Korrekturprotokoll", command=self.show_session_corrections).pack(
+            side="left"
+        )
+        ttk.Button(actions, text="Historie aktualisieren", command=self.refresh_history).pack(
+            side="right"
         )
         self.history_tree.bind("<Double-1>", self.show_history_details)
 
@@ -1514,6 +1524,105 @@ class WerkMateApp(tk.Tk):
             f"Notiz: {session['note'] or '–'}",
             parent=self,
         )
+
+    def _selected_history_session(self) -> dict | None:
+        selected = self.history_tree.selection()
+        if not selected:
+            messagebox.showinfo("Keine Auswahl", "Bitte zuerst eine Rückmeldung auswählen.", parent=self)
+            return None
+        return self.database.get_session(int(selected[0]))
+
+    def edit_history_entry(self) -> None:
+        session = self._selected_history_session()
+        if session is None:
+            return
+        if session["status"] != "abgeschlossen":
+            messagebox.showerror(
+                "Korrektur nicht möglich", "Nur abgeschlossene Rückmeldungen können korrigiert werden.",
+                parent=self,
+            )
+            return
+        dialog = tk.Toplevel(self)
+        dialog.title(f"Rückmeldung #{session['id']} korrigieren")
+        dialog.transient(self)
+        dialog.grab_set()
+        frame = ttk.Frame(dialog, padding=16)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(
+            frame,
+            text=f"{session['order_number']} · {session['die_number']} / {session['operation']}",
+            style="Title.TLabel",
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
+        fields = (
+            ("Anmeldezeit", datetime.fromisoformat(session["reported_started_at"]).strftime("%Y-%m-%d %H:%M")),
+            ("Abmeldezeit", datetime.fromisoformat(session["reported_ended_at"]).strftime("%Y-%m-%d %H:%M")),
+            ("Tatsächlich bearbeitet", str(session["completed_quantity"] or 0)),
+            ("Betrieblich rückgemeldet", str(session["reported_quantity"] or 0)),
+            ("Notiz", session["note"] or ""),
+            ("Korrekturgrund", ""),
+        )
+        entries: list[ttk.Entry] = []
+        for row, (label, value) in enumerate(fields, start=1):
+            ttk.Label(frame, text=f"{label}:").grid(row=row, column=0, sticky="w", padx=(0, 12), pady=5)
+            entry = ttk.Entry(frame, width=48)
+            entry.insert(0, value)
+            entry.grid(row=row, column=1, sticky="ew", pady=5)
+            entries.append(entry)
+        ttk.Label(
+            frame,
+            text="Jede Änderung bleibt mit altem Wert, neuem Wert und Grund im Protokoll erhalten.",
+            style="Muted.TLabel",
+        ).grid(row=7, column=0, columnspan=2, sticky="w", pady=(10, 6))
+
+        def save() -> None:
+            try:
+                start = parse_datetime(entries[0].get())
+                end = parse_datetime(entries[1].get())
+                actual = int(entries[2].get())
+                reported = int(entries[3].get())
+                reason = entries[5].get().strip()
+                if not messagebox.askyesno(
+                    "Korrektur bestätigen",
+                    "Diese Rückmeldung wirklich ändern? Die Änderung wird dauerhaft protokolliert.",
+                    parent=dialog,
+                ):
+                    return
+                self.database.correct_session(
+                    int(session["id"]), reported_started_at=start, reported_ended_at=end,
+                    completed_quantity=actual, reported_quantity=reported,
+                    note=entries[4].get(), reason=reason,
+                )
+            except (ValueError, TypeError) as error:
+                messagebox.showerror("Korrektur nicht gespeichert", str(error), parent=dialog)
+                return
+            dialog.destroy()
+            self.refresh_all()
+            messagebox.showinfo("Korrektur gespeichert", "Mengen, Guthaben und Abweichungen wurden neu berechnet.", parent=self)
+
+        ttk.Button(frame, text="KORREKTUR SPEICHERN", style="Primary.TButton", command=save).grid(
+            row=8, column=0, columnspan=2, sticky="ew", pady=(8, 0)
+        )
+        frame.columnconfigure(1, weight=1)
+        dialog.wait_window()
+
+    def show_session_corrections(self) -> None:
+        session = self._selected_history_session()
+        if session is None:
+            return
+        corrections = self.database.corrections("session", int(session["id"]))
+        if not corrections:
+            messagebox.showinfo("Korrekturprotokoll", "Diese Rückmeldung wurde noch nicht korrigiert.", parent=self)
+            return
+        lines = []
+        for item in corrections:
+            changed = display_time(item["changed_at"])
+            lines.append(
+                f"{changed} · {item['field_name']}\n"
+                f"  vorher: {json.loads(item['old_value']) if item['old_value'] else '–'}\n"
+                f"  nachher: {json.loads(item['new_value']) if item['new_value'] else '–'}\n"
+                f"  Grund: {item['reason']}"
+            )
+        messagebox.showinfo("Korrekturprotokoll", "\n\n".join(lines), parent=self)
 
     def _build_settings(self) -> None:
         ttk.Label(self.settings_tab, text="Schichten und Pausen", style="Title.TLabel").pack(
