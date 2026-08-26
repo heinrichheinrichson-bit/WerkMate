@@ -1,0 +1,147 @@
+from datetime import datetime, timedelta
+
+import pytest
+
+from werkmate.database import WerkMateDatabase
+
+
+@pytest.fixture
+def database(tmp_path):
+    return WerkMateDatabase(tmp_path / "werkmate.sqlite3")
+
+
+def create_order(database: WerkMateDatabase) -> int:
+    return database.create_order(
+        order_number="FA-4711",
+        die_number="8720",
+        operation="FP1",
+        original_quantity=24,
+        seconds_per_piece=1_200,
+        note="Wichtiger Auftrag",
+    )
+
+
+def test_order_is_stored_with_calculated_open_quantity(database) -> None:
+    order_id = create_order(database)
+    order = database.get_order(order_id)
+    assert order["order_number"] == "FA-4711"
+    assert order["open_quantity"] == 24
+    assert order["note"] == "Wichtiger Auftrag"
+
+
+def test_partial_report_keeps_order_open(database) -> None:
+    order_id = create_order(database)
+    start = datetime(2026, 8, 26, 13, 45)
+    session_id = database.start_session(
+        order_id=order_id,
+        shift_name="Schicht 2",
+        quantity_to_process=24,
+        seconds_per_piece=1_200,
+        actual_started_at=start,
+        reported_started_at=start,
+        target_end=start + timedelta(minutes=498),
+        pause_seconds=1_080,
+    )
+    database.complete_session(
+        session_id,
+        completed_quantity=20,
+        actual_confirmed_at=datetime(2026, 8, 26, 21, 50),
+        reported_ended_at=datetime(2026, 8, 26, 21, 45),
+        note="Rest wird morgen fortgesetzt",
+    )
+    order = database.get_order(order_id)
+    assert order["completed_quantity"] == 20
+    assert order["open_quantity"] == 4
+    assert order["status"] == "teilweise_erledigt"
+    assert database.get_session(session_id)["note"] == "Rest wird morgen fortgesetzt"
+
+
+def test_multiple_sessions_complete_an_order(database) -> None:
+    order_id = create_order(database)
+    for day, quantity in [(26, 20), (27, 4)]:
+        start = datetime(2026, 8, day, 6)
+        session_id = database.start_session(
+            order_id=order_id,
+            shift_name="Schicht 1",
+            quantity_to_process=quantity,
+            seconds_per_piece=1_200,
+            actual_started_at=start,
+            reported_started_at=start,
+            target_end=start + timedelta(minutes=quantity * 20),
+            pause_seconds=0,
+        )
+        database.complete_session(
+            session_id,
+            completed_quantity=quantity,
+            actual_confirmed_at=start + timedelta(minutes=quantity * 20),
+            reported_ended_at=start + timedelta(minutes=quantity * 20),
+        )
+    order = database.get_order(order_id)
+    assert order["open_quantity"] == 0
+    assert order["status"] == "vollstaendig_erledigt"
+    assert len(database.history()) == 2
+
+
+def test_handed_off_means_not_personally_tracked(database) -> None:
+    order_id = create_order(database)
+    database.hand_off_order(order_id, reason="Kollege übernimmt")
+    assert database.get_order(order_id)["status"] == "abgegeben"
+    assert database.corrections("order", order_id)[0]["reason"] == "Kollege übernimmt"
+
+
+def test_correction_preserves_old_and_new_value(database) -> None:
+    order_id = create_order(database)
+    database.update_field("order", order_id, "note", "Neue Notiz", reason="Ergänzt")
+    correction = database.corrections("order", order_id)[0]
+    assert correction["old_value"] == '"Wichtiger Auftrag"'
+    assert correction["new_value"] == '"Neue Notiz"'
+
+
+def test_only_one_active_session_can_be_found(database) -> None:
+    order_id = create_order(database)
+    start = datetime(2026, 8, 26, 13, 45)
+    session_id = database.start_session(
+        order_id=order_id,
+        shift_name="Schicht 2",
+        quantity_to_process=4,
+        seconds_per_piece=1_200,
+        actual_started_at=start,
+        reported_started_at=start,
+        target_end=start + timedelta(minutes=80),
+        pause_seconds=0,
+    )
+    assert database.active_session()["id"] == session_id
+
+
+def test_second_simultaneous_session_is_rejected(database) -> None:
+    order_id = create_order(database)
+    start = datetime(2026, 8, 26, 13, 45)
+    arguments = dict(
+        order_id=order_id,
+        shift_name="Schicht 2",
+        quantity_to_process=4,
+        seconds_per_piece=1_200,
+        actual_started_at=start,
+        reported_started_at=start,
+        target_end=start + timedelta(minutes=80),
+        pause_seconds=0,
+    )
+    database.start_session(**arguments)
+    with pytest.raises(ValueError, match="bereits"):
+        database.start_session(**arguments)
+
+
+def test_session_cannot_exceed_open_quantity(database) -> None:
+    order_id = create_order(database)
+    start = datetime(2026, 8, 26, 13, 45)
+    with pytest.raises(ValueError, match="offene Auftragsmenge"):
+        database.start_session(
+            order_id=order_id,
+            shift_name="Schicht 2",
+            quantity_to_process=25,
+            seconds_per_piece=1_200,
+            actual_started_at=start,
+            reported_started_at=start,
+            target_end=start + timedelta(minutes=500),
+            pause_seconds=0,
+        )
