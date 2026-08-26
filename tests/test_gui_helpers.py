@@ -6,6 +6,7 @@ from werkmate.gui import (
     display_time,
     format_piece_equivalent,
     format_total_target_time,
+    parse_plan_start_override,
 )
 
 
@@ -27,3 +28,14 @@ def test_current_shift_is_recognized() -> None:
 
 def test_total_target_time_shows_minutes_and_hours() -> None:
     assert format_total_target_time(48 * 20 * 60) == "960,0 min (16 h 00 min)"
+
+
+def test_plan_start_override_accepts_clock_time_and_rolls_to_next_day() -> None:
+    plan_start = datetime(2026, 8, 26, 21, 0)
+    assert parse_plan_start_override("21:30", plan_start) == datetime(2026, 8, 26, 21, 30)
+    assert parse_plan_start_override("13:45", plan_start) == datetime(2026, 8, 27, 13, 45)
+
+
+def test_plan_start_override_accepts_full_timestamp() -> None:
+    plan_start = datetime(2026, 8, 26, 5, 45)
+    assert parse_plan_start_override("2026-08-27 06:00", plan_start) == datetime(2026, 8, 27, 6)

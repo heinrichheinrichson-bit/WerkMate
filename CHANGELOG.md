@@ -4,6 +4,23 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.24.0] - 2026-08-26
+
+### Behoben
+
+- Manueller Planauftrag wird nach gültiger Eingabe zuverlässig angelegt und der Dialog geschlossen
+- Kurze Uhrzeiten wie `13:45` werden relativ zum Plantag korrekt verarbeitet
+- Stückzeit wird bei bekannter Gesenk-/Arbeitsgang-Kombination automatisch aus dem Katalog übernommen
+- Bei genau einem Katalog-Arbeitsgang genügt die Gesenknummer; Arbeitsgang und Stückzeit werden ergänzt
+- Bei mehreren Arbeitsgängen zeigt WerkMate die vorhandenen AG-Codes als Auswahlhilfe
+- Für „Offene Stück fest“ ist keine zusätzliche Zahl mehr nötig; leer bedeutet alle offenen Stück
+- Das mehrdeutige Feld „Stück/Minuten“ erhält je nach Planungsart eine eindeutige Beschriftung
+
+### Qualität
+
+- Erweiterte Tests für kurze und vollständige Planstartzeiten
+- Vollständige Logik-, Syntax-, Datenbank- und GUI-Ablaufprüfung
+
 ## [0.23.0] - 2026-08-26
 
 ### Neu

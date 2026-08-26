@@ -43,6 +43,21 @@ def format_total_target_time(seconds: int) -> str:
     return f"{minute_text} min ({hours} h {minutes:02d} min)"
 
 
+def parse_plan_start_override(value: str, plan_start: datetime) -> datetime:
+    """Accept a full timestamp or a convenient HH:MM value for the plan."""
+    cleaned = value.strip()
+    if not cleaned:
+        raise ValueError("Die Startzeit darf nicht leer sein.")
+    try:
+        clock = datetime.strptime(cleaned, "%H:%M").time()
+    except ValueError:
+        return parse_datetime(cleaned)
+    result = datetime.combine(plan_start.date(), clock)
+    if result < plan_start:
+        result += timedelta(days=1)
+    return result
+
+
 def current_shift_number(at: datetime, settings: list[dict] | None = None) -> int:
     if settings:
         current = at.time()
@@ -476,9 +491,11 @@ class WerkMateApp(tk.Tk):
         )
         self.plan_mode.set("Offene Stück fest")
         self.plan_mode.grid(row=1, column=1, sticky="ew", padx=8)
-        ttk.Label(add, text="Stück/Minuten:").grid(row=0, column=2, sticky="w")
+        self.plan_value_label = ttk.Label(add, text="Stückzahl (leer = alle offenen):")
+        self.plan_value_label.grid(row=0, column=2, sticky="w")
         self.plan_value = ttk.Entry(add, width=15)
         self.plan_value.grid(row=1, column=2, sticky="ew", padx=8)
+        self.plan_mode.bind("<<ComboboxSelected>>", self._update_plan_value_label)
         ttk.Button(add, text="Zum Plan hinzufügen", command=self.add_shift_plan_item).grid(
             row=1, column=3, sticky="ew", padx=(8, 0)
         )
@@ -547,6 +564,15 @@ class WerkMateApp(tk.Tk):
         )
         self.plan_start_button.pack(fill="x", pady=(8, 0))
 
+    def _update_plan_value_label(self, _event=None) -> None:
+        labels = {
+            "Offene Stück fest": "Stückzahl (leer = alle offenen):",
+            "Restschicht mit Auftrag füllen": "Keine Eingabe nötig:",
+            "Guthaben nach Stück": "Guthaben-Stückzahl:",
+            "Guthaben nach Minuten": "Guthaben-Minuten:",
+        }
+        self.plan_value_label.configure(text=labels.get(self.plan_mode.get(), "Wert:"))
+
     def refresh_plan_orders(self) -> None:
         self._plan_order_map = {}
         values = []
@@ -576,6 +602,10 @@ class WerkMateApp(tk.Tk):
                 value = None
             elif mode == "credit_time":
                 value = minutes_to_seconds(self.plan_value.get())
+            elif mode == "work_fixed" and not self.plan_value.get().strip():
+                value = int(order["open_quantity"])
+                if value <= 0:
+                    raise ValueError
             else:
                 value = int(self.plan_value.get())
                 if value <= 0:
@@ -604,20 +634,54 @@ class WerkMateApp(tk.Tk):
             ttk.Label(body, text=f"{label}:").grid(row=row, column=0, sticky="w", pady=5)
             entry = ttk.Entry(body, width=38); entry.insert(0, value)
             entry.grid(row=row, column=1, padx=(12, 0), pady=5); entries.append(entry)
+        catalog_hint = ttk.Label(body, text="", style="Muted.TLabel")
+        catalog_hint.grid(row=7, column=0, columnspan=2, sticky="w", pady=(2, 0))
+
+        def apply_catalog_time(_event=None) -> None:
+            die = entries[1].get().strip()
+            operation = entries[2].get().strip()
+            matches = self.database.standards_for_die(die) if die else []
+            operation_is_placeholder = operation.casefold() == "manuell"
+            if operation and not operation_is_placeholder:
+                matches = [
+                    item for item in matches
+                    if item["operation_code"].casefold() == operation.casefold()
+                ]
+            if len(matches) == 1:
+                seconds = int(matches[0]["seconds_per_piece"])
+                self._set_entry(entries[4], str(seconds_to_minutes(seconds)).replace(".", ","))
+                if not operation or operation_is_placeholder:
+                    self._set_entry(entries[2], matches[0]["operation_code"])
+                catalog_hint.configure(text="Stückzeit automatisch aus dem Gesenk-Katalog übernommen.")
+            elif len(matches) > 1:
+                codes = ", ".join(item["operation_code"] for item in matches)
+                catalog_hint.configure(text=f"Mehrere Arbeitsgänge vorhanden: {codes}")
+            else:
+                catalog_hint.configure(text="")
+
+        entries[1].bind("<FocusOut>", apply_catalog_time)
+        entries[2].bind("<FocusOut>", apply_catalog_time)
+        entries[1].bind("<Return>", apply_catalog_time)
+        entries[2].bind("<Return>", apply_catalog_time)
         save_order = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             body, text="Zusätzlich dauerhaft unter Aufträge speichern", variable=save_order
-        ).grid(row=7, column=0, columnspan=2, sticky="w", pady=(8, 4))
+        ).grid(row=8, column=0, columnspan=2, sticky="w", pady=(8, 4))
 
         def add() -> None:
             try:
+                apply_catalog_time()
                 quantity = int(entries[3].get())
+                if not entries[4].get().strip():
+                    raise ValueError(
+                        "Keine eindeutige Stückzeit gefunden. Bitte Arbeitsgang prüfen "
+                        "oder min/Stück manuell eingeben."
+                    )
                 seconds = minutes_to_seconds(entries[4].get())
                 if quantity <= 0:
                     raise ValueError("Die Stückzahl muss größer als null sein.")
-                start_override = (
-                    parse_datetime(entries[5].get()) if entries[5].get().strip() else None
-                )
+                plan_start = parse_datetime(self.plan_start.get())
+                start_override = parse_plan_start_override(entries[5].get(), plan_start) if entries[5].get().strip() else None
                 number = entries[0].get().strip() or f"PLAN-{datetime.now():%Y%m%d-%H%M%S}"
                 if self.database.find_order(number) is not None:
                     raise ValueError("Diese Auftragsnummer ist bereits vorhanden.")
@@ -641,7 +705,7 @@ class WerkMateApp(tk.Tk):
             dialog.destroy(); self.refresh_shift_plan_queue(); self.refresh_plan_orders()
 
         ttk.Button(body, text="ZUM SCHICHTABLAUF HINZUFÜGEN", style="Primary.TButton", command=add).grid(
-            row=8, column=0, columnspan=2, sticky="ew", pady=(10, 0)
+            row=9, column=0, columnspan=2, sticky="ew", pady=(10, 0)
         )
 
     def edit_plan_item_start(self) -> None:
