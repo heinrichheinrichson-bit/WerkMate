@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.24.0 – zuverlässige und kataloggestützte Schichtplaneingabe**
+**Version 0.24.1 – Schichtplanung mit kurzen Uhrzeiteingaben**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern

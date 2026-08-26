@@ -58,6 +58,16 @@ def parse_plan_start_override(value: str, plan_start: datetime) -> datetime:
     return result
 
 
+def parse_plan_start(value: str, today: date | None = None) -> datetime:
+    """Parse the plan's start; HH:MM means that clock time on the current day."""
+    cleaned = value.strip()
+    try:
+        clock = datetime.strptime(cleaned, "%H:%M").time()
+    except ValueError:
+        return parse_datetime(cleaned)
+    return datetime.combine(today or local_now().date(), clock)
+
+
 def current_shift_number(at: datetime, settings: list[dict] | None = None) -> int:
     if settings:
         current = at.time()
@@ -462,9 +472,9 @@ class WerkMateApp(tk.Tk):
         )
         settings = ttk.Frame(self.plan_tab)
         settings.pack(fill="x", pady=(12, 8))
-        ttk.Label(settings, text="Planstart:").pack(side="left")
+        ttk.Label(settings, text="Planstart (Uhrzeit):").pack(side="left")
         self.plan_start = ttk.Entry(settings, width=20)
-        self.plan_start.insert(0, local_now().strftime("%Y-%m-%d %H:%M"))
+        self.plan_start.insert(0, local_now().strftime("%H:%M"))
         self.plan_start.pack(side="left", padx=(6, 16))
         ttk.Label(settings, text="Schicht:").pack(side="left")
         self.plan_shift = ttk.Combobox(settings, values=("1", "2", "3"), state="readonly", width=6)
@@ -680,7 +690,7 @@ class WerkMateApp(tk.Tk):
                 seconds = minutes_to_seconds(entries[4].get())
                 if quantity <= 0:
                     raise ValueError("Die Stückzahl muss größer als null sein.")
-                plan_start = parse_datetime(self.plan_start.get())
+                plan_start = parse_plan_start(self.plan_start.get())
                 start_override = parse_plan_start_override(entries[5].get(), plan_start) if entries[5].get().strip() else None
                 number = entries[0].get().strip() or f"PLAN-{datetime.now():%Y%m%d-%H%M%S}"
                 if self.database.find_order(number) is not None:
@@ -717,14 +727,15 @@ class WerkMateApp(tk.Tk):
         current = item.get("start_override")
         value = simpledialog.askstring(
             "Eigene Startzeit",
-            "Startzeit als YYYY-MM-DD HH:MM eingeben. Leer = automatisch anschließend:",
-            initialvalue=current.strftime("%Y-%m-%d %H:%M") if isinstance(current, datetime) else "",
+            "Nur Uhrzeit eingeben, z. B. 13:45. Leer = automatisch anschließend:",
+            initialvalue=current.strftime("%H:%M") if isinstance(current, datetime) else "",
             parent=self,
         )
         if value is None:
             return
         try:
-            item["start_override"] = parse_datetime(value) if value.strip() else None
+            plan_start = parse_plan_start(self.plan_start.get())
+            item["start_override"] = parse_plan_start_override(value, plan_start) if value.strip() else None
         except ValueError as error:
             messagebox.showerror("Ungültige Startzeit", str(error), parent=self); return
         self.refresh_shift_plan_queue()
@@ -801,7 +812,7 @@ class WerkMateApp(tk.Tk):
         try:
             self.shift_plan_results = self.service.plan_sequence(
                 items=self.shift_plan_items,
-                reported_start=parse_datetime(self.plan_start.get()),
+                reported_start=parse_plan_start(self.plan_start.get()),
                 shift_number=int(self.plan_shift.get()),
             )
         except (ValueError, TypeError) as error:
@@ -810,7 +821,7 @@ class WerkMateApp(tk.Tk):
         if persist:
             try:
                 self.database.save_shift_plan(
-                    reported_start=parse_datetime(self.plan_start.get()),
+                    reported_start=parse_plan_start(self.plan_start.get()),
                     shift_number=int(self.plan_shift.get()),
                     items=self.shift_plan_items,
                 )

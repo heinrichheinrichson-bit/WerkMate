@@ -4,6 +4,16 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.24.1] - 2026-08-26
+
+### Verbessert
+
+- Im Schichtplan genügt für Planstart und eigene Startzeiten die Uhrzeit `HH:MM`
+- Das aktuelle Datum wird automatisch verwendet
+- Beim Bearbeiten wird nur noch die kurze Uhrzeit angezeigt
+- Verständlicher Eingabehinweis mit Beispiel `13:45`
+- Vollständige Datums- und Zeitangaben bleiben optional kompatibel
+
 ## [0.24.0] - 2026-08-26
 
 ### Behoben

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from werkmate.gui import (
@@ -6,6 +6,7 @@ from werkmate.gui import (
     display_time,
     format_piece_equivalent,
     format_total_target_time,
+    parse_plan_start,
     parse_plan_start_override,
 )
 
@@ -39,3 +40,11 @@ def test_plan_start_override_accepts_clock_time_and_rolls_to_next_day() -> None:
 def test_plan_start_override_accepts_full_timestamp() -> None:
     plan_start = datetime(2026, 8, 26, 5, 45)
     assert parse_plan_start_override("2026-08-27 06:00", plan_start) == datetime(2026, 8, 27, 6)
+
+
+def test_plan_start_accepts_clock_time_on_current_day() -> None:
+    assert parse_plan_start("13:45", date(2026, 8, 26)) == datetime(2026, 8, 26, 13, 45)
+
+
+def test_plan_start_keeps_full_timestamp_compatibility() -> None:
+    assert parse_plan_start("2026-08-27 05:45") == datetime(2026, 8, 27, 5, 45)
