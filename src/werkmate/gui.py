@@ -108,6 +108,16 @@ class WerkMateApp(tk.Tk):
         self.target_label.pack()
         self.forecast_label = ttk.Label(self.dashboard_tab, text="", justify="center")
         self.forecast_label.pack(pady=18)
+        self.order_remaining_label = ttk.Label(
+            self.dashboard_tab, text="", justify="center", style="Muted.TLabel"
+        )
+        self.order_remaining_label.pack(pady=(0, 8))
+        self.cancel_work_button = ttk.Button(
+            self.dashboard_tab,
+            text="Fehlstart / Arbeitseinsatz abbrechen",
+            command=self.cancel_active,
+        )
+        self.cancel_work_button.pack()
 
         finish = ttk.LabelFrame(self.dashboard_tab, text="Arbeitseinsatz rückmelden", padding=14)
         finish.pack(fill="x", pady=(20, 0))
@@ -122,9 +132,18 @@ class WerkMateApp(tk.Tk):
         self.finish_note = ttk.Entry(finish)
         self.finish_note.grid(row=1, column=1, columnspan=4, sticky="ew", padx=(8, 0), pady=(12, 0))
         ttk.Button(
-            finish, text="Rückmeldung speichern", style="Primary.TButton",
+            finish, text="Teilrückmelden / Arbeitseinsatz unterbrechen", style="Primary.TButton",
             command=self.finish_active,
-        ).grid(row=2, column=0, columnspan=5, sticky="ew", pady=(16, 0))
+        ).grid(row=2, column=0, columnspan=3, sticky="ew", pady=(16, 0), padx=(0, 6))
+        self.finish_entire_button = ttk.Button(
+            finish,
+            text="Gesamtauftrag vollständig beenden",
+            style="Primary.TButton",
+            command=self.finish_entire_order,
+        )
+        self.finish_entire_button.grid(
+            row=2, column=3, columnspan=2, sticky="ew", pady=(16, 0), padx=(6, 0)
+        )
         finish.columnconfigure(3, weight=1)
 
     def _build_orders(self) -> None:
@@ -261,7 +280,7 @@ class WerkMateApp(tk.Tk):
         ttk.Label(filters, text="Status:").pack(side="left")
         self.history_status = ttk.Combobox(
             filters,
-            values=("Alle", "laufend", "abgeschlossen", "korrigiert"),
+            values=("Alle", "laufend", "abgeschlossen", "abgebrochen", "korrigiert"),
             state="readonly",
             width=16,
         )
@@ -649,10 +668,72 @@ class WerkMateApp(tk.Tk):
         self.finish_note.delete(0, tk.END)
         self.refresh_all()
         messagebox.showinfo(
-            "Rückmeldung gespeichert",
-            "Stückzahl, Abmeldezeit und Notiz wurden in der Historie gespeichert.",
+            "Teilrückmeldung gespeichert",
+            "Der Arbeitseinsatz wurde beendet. Die übrigen Stück bleiben als offener Restauftrag gespeichert.",
             parent=self,
         )
+
+    def finish_entire_order(self) -> None:
+        session = self.database.active_session()
+        if session is None:
+            messagebox.showinfo("Kein Auftrag", "Es läuft derzeit kein Arbeitseinsatz.", parent=self)
+            return
+        order = self.database.get_order(int(session["order_id"]))
+        if order is None:
+            messagebox.showerror("Fehler", "Auftrag nicht gefunden.", parent=self)
+            return
+        open_quantity = int(order["open_quantity"])
+        if not messagebox.askyesno(
+            "Gesamtauftrag vollständig beenden",
+            f"Wirklich alle noch offenen {open_quantity} Stück als fertig bearbeitet rückmelden?\n\n"
+            "Danach ist der Gesamtauftrag vollständig beendet.",
+            parent=self,
+        ):
+            return
+        try:
+            reported_end = self._entry_datetime(self.finish_time)
+            warning = warn_unusual_end(session, reported_end)
+            if warning and not messagebox.askyesno(
+                "Ungewöhnliche Abmeldezeit",
+                f"{warning}\n\nZeit trotzdem bewusst übernehmen?",
+                parent=self,
+            ):
+                return
+            completed = self.service.finish_entire_order(
+                int(session["id"]),
+                reported_end=reported_end,
+                note=self.finish_note.get(),
+            )
+        except (ValueError, TypeError) as error:
+            messagebox.showerror("Beenden nicht möglich", str(error), parent=self)
+            return
+        self.finish_quantity.delete(0, tk.END)
+        self.finish_note.delete(0, tk.END)
+        self.refresh_all()
+        messagebox.showinfo(
+            "Auftrag vollständig beendet",
+            f"Alle {completed} noch offenen Stück wurden als fertig rückgemeldet.",
+            parent=self,
+        )
+
+    def cancel_active(self) -> None:
+        session = self.database.active_session()
+        if session is None:
+            return
+        if not messagebox.askyesno(
+            "Arbeitseinsatz abbrechen",
+            "Diesen Start rückgängig machen? Es werden keine Stück rückgemeldet.\n\n"
+            "Der Auftrag bleibt offen und kann anschließend mit korrigierten Eingaben neu gestartet werden.",
+            parent=self,
+        ):
+            return
+        try:
+            self.service.cancel_work(int(session["id"]), reason="Fehlstart über Oberfläche abgebrochen")
+        except ValueError as error:
+            messagebox.showerror("Abbruch nicht möglich", str(error), parent=self)
+            return
+        self.refresh_all()
+        self.tabs.select(self.orders_tab)
 
     def refresh_orders(self) -> None:
         self.orders_tree.delete(*self.orders_tree.get_children())
@@ -681,7 +762,10 @@ class WerkMateApp(tk.Tk):
             self.countdown.configure(text="--:--:--", style="Countdown.TLabel")
             self.target_label.configure(text="")
             self.forecast_label.configure(text="")
+            self.order_remaining_label.configure(text="")
+            self.cancel_work_button.configure(state="disabled")
             return
+        self.cancel_work_button.configure(state="normal")
 
         self.active_title.configure(
             text=f"{status['order_number']} · Ges. {status['die_number']} · {status['operation']}"
@@ -711,6 +795,14 @@ class WerkMateApp(tk.Tk):
             )
         else:
             self.forecast_label.configure(text="Keine Schicht für die Reststückprognose gewählt.")
+        if "order_open_quantity" in status:
+            remaining = format_duration(status["order_open_seconds"])
+            extra = format_duration(status["beyond_shift_seconds"])
+            self.order_remaining_label.configure(
+                text=f"Gesamtauftrag noch nicht rückgemeldet: {status['order_open_quantity']} Stück · "
+                     f"{remaining} Vorgabezeit\n"
+                     f"Davon außerhalb der aktuellen Schichtkapazität: {extra}"
+            )
         if overdue and self.notified_session_id != status["id"]:
             self.notified_session_id = int(status["id"])
             self.bell()

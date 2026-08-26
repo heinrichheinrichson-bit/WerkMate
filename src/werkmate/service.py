@@ -184,6 +184,11 @@ class WerkMateService:
                 Decimal(available_seconds) / Decimal(int(session["seconds_per_piece"])),
                 Decimal(open_quantity),
             )
+            session["order_open_quantity"] = open_quantity
+            session["order_open_seconds"] = open_quantity * int(session["seconds_per_piece"])
+            session["beyond_shift_seconds"] = max(
+                session["order_open_seconds"] - available_seconds, 0
+            )
         return session
 
     def finish_work(
@@ -204,3 +209,30 @@ class WerkMateService:
             reported_ended_at=reported_end,
             note=note,
         )
+
+    def finish_entire_order(
+        self,
+        session_id: int,
+        *,
+        reported_end: datetime,
+        actual_confirmation: datetime | None = None,
+        note: str = "",
+    ) -> int:
+        session = self.database.get_session(session_id)
+        if session is None:
+            raise ValueError("Arbeitseinsatz nicht gefunden.")
+        order = self.database.get_order(int(session["order_id"]))
+        if order is None:
+            raise ValueError("Auftrag nicht gefunden.")
+        quantity = int(order["open_quantity"])
+        self.finish_work(
+            session_id,
+            completed_quantity=quantity,
+            reported_end=reported_end,
+            actual_confirmation=actual_confirmation,
+            note=note,
+        )
+        return quantity
+
+    def cancel_work(self, session_id: int, *, reason: str = "Fehlstart") -> None:
+        self.database.cancel_session(session_id, reason=reason)

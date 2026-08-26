@@ -123,3 +123,25 @@ def test_early_shift_forecast_returns_decimal_target_and_complete_pieces(tmp_pat
     assert forecast["remainder_seconds"] == 2 * 60
     assert forecast["next_piece_overtime_seconds"] == 18 * 60
     assert forecast["open_after_shift"] == 25
+
+
+def test_entire_order_can_finish_more_than_planned_session_quantity(tmp_path) -> None:
+    database = WerkMateDatabase(tmp_path / "db.sqlite3")
+    service = WerkMateService(database)
+    order_id = service.create_order(
+        order_number="FA-24", die_number="8720", operation="FP1",
+        original_quantity=24, seconds_per_piece=1_200,
+    )
+    start = datetime(2026, 8, 26, 5, 45)
+    session_id = service.start_work(
+        order_id=order_id, quantity=23, reported_start=start,
+        actual_start=start, shift_number=1,
+    )
+    completed = service.finish_entire_order(
+        session_id,
+        reported_end=datetime(2026, 8, 26, 14, 3),
+        actual_confirmation=datetime(2026, 8, 26, 14, 3),
+    )
+    assert completed == 24
+    assert database.get_order(order_id)["status"] == "vollstaendig_erledigt"
+    assert database.get_order(order_id)["open_quantity"] == 0

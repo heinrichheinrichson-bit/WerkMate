@@ -225,3 +225,24 @@ def test_history_can_be_searched_and_filtered(database) -> None:
     assert len(database.history(search="Sonderprüfung")) == 1
     assert len(database.history(search="FA-4711", status="laufend")) == 1
     assert database.history(status="abgeschlossen") == []
+
+
+def test_accidental_session_start_can_be_cancelled_without_quantity(database) -> None:
+    order_id = create_order(database)
+    start = datetime(2026, 8, 26, 6)
+    session_id = database.start_session(
+        order_id=order_id,
+        shift_name="Schicht 1",
+        quantity_to_process=4,
+        seconds_per_piece=1_200,
+        actual_started_at=start,
+        reported_started_at=start,
+        target_end=start + timedelta(minutes=80),
+        pause_seconds=0,
+    )
+    database.cancel_session(session_id, reason="Falsche Eingabe")
+    session = database.get_session(session_id)
+    assert session["status"] == "abgebrochen"
+    assert session["completed_quantity"] == 0
+    assert database.get_order(order_id)["open_quantity"] == 24
+    assert database.active_session() is None

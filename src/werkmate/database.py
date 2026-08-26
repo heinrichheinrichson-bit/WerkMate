@@ -279,7 +279,7 @@ class WerkMateDatabase:
         session = self.get_session(session_id)
         if session is None:
             raise ValueError("Arbeitseinsatz nicht gefunden.")
-        if completed_quantity < 0 or completed_quantity > session["quantity_to_process"]:
+        if completed_quantity < 0:
             raise ValueError("Die fertiggemeldete Menge ist ungültig.")
         order = self.get_order(int(session["order_id"]))
         if order is None or completed_quantity > order["open_quantity"]:
@@ -317,6 +317,24 @@ class WerkMateDatabase:
             connection.execute(
                 "UPDATE orders SET status = ?, updated_at = ? WHERE id = ?",
                 (status, now, session["order_id"]),
+            )
+
+    def cancel_session(self, session_id: int, *, reason: str = "Fehlstart") -> None:
+        session = self.get_session(session_id)
+        if session is None:
+            raise ValueError("Arbeitseinsatz nicht gefunden.")
+        if session["status"] not in ("laufend", "sollzeit_erreicht", "ueberzogen"):
+            raise ValueError("Nur ein laufender Arbeitseinsatz kann abgebrochen werden.")
+        now = self._now()
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE work_sessions
+                SET status = 'abgebrochen', completed_quantity = 0,
+                    actual_confirmed_at = ?, note = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (now, reason.strip(), now, session_id),
             )
 
     def update_field(

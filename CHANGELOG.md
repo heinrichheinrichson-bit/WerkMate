@@ -4,6 +4,17 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.8.0] - 2026-08-26
+
+### Hinzugefügt
+
+- Klare Trennung zwischen Teilrückmeldung und vollständigem Auftragsabschluss
+- Vollständiger Abschluss meldet bewusst alle noch offenen Stück
+- Fehlstart kann ohne Stückmeldung abgebrochen und anschließend neu eingegeben werden
+- Abgebrochene Einsätze bleiben nachvollziehbar in der Historie
+- Weniger dominante Anzeige der gesamten offenen Vorgabezeit
+- Anzeige, wie viel Vorgabezeit über die aktuelle Schichtkapazität hinausgeht
+
 ## [0.7.1] - 2026-08-26
 
 ### Geändert

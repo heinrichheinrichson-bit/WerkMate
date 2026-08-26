@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.7.1 – Schichtbezogene Einsatzplanung und Sollstückzahl-Prognose**
+**Version 0.8.0 – klare Teilrückmeldung, Abschluss und Fehlstartkorrektur**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern
