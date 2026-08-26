@@ -4,6 +4,18 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.5.0] - 2026-08-26
+
+### Hinzugefügt
+
+- Bearbeitungsmaske für Gesenk, Arbeitsgang, Gesamtmenge, Vorgabezeit und Notiz
+- Dauerhaftes Änderungsprotokoll direkt aus der Auftragsansicht
+- Wiederaufnahme zuvor abgegebener Restaufträge
+- Suche in Meldungen, Aufträgen, Gesenken, Arbeitsgängen und Notizen
+- Statusfilter in der persönlichen Historie
+- Schutz vor einer Gesamtmenge unterhalb bereits gemeldeter Stückzahlen
+- Bestehende Arbeitseinsätze behalten ihre ursprüngliche Vorgabezeit
+
 ## [0.4.0] - 2026-08-26
 
 ### Hinzugefügt

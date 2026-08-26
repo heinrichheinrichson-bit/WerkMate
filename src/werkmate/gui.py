@@ -138,6 +138,18 @@ class WerkMateApp(tk.Tk):
             self.orders_tree.heading(column, text=heading)
             self.orders_tree.column(column, width=width, anchor="center")
         self.orders_tree.pack(fill="both", expand=True)
+        self.orders_tree.bind("<Double-1>", lambda _event: self.edit_selected_order())
+        order_actions = ttk.Frame(list_frame)
+        order_actions.pack(fill="x", pady=(8, 0))
+        ttk.Button(order_actions, text="Auftrag bearbeiten", command=self.edit_selected_order).pack(
+            side="left"
+        )
+        ttk.Button(order_actions, text="Änderungen anzeigen", command=self.show_order_corrections).pack(
+            side="left", padx=8
+        )
+        ttk.Button(order_actions, text="Abgegebenen Auftrag wieder aufnehmen", command=self.resume_selected).pack(
+            side="right"
+        )
 
         start = ttk.LabelFrame(self.orders_tab, text="Ausgewählten Auftrag starten", padding=12)
         start.pack(fill="x")
@@ -161,6 +173,23 @@ class WerkMateApp(tk.Tk):
         self._fill_start_now()
 
     def _build_history(self) -> None:
+        filters = ttk.Frame(self.history_tab)
+        filters.pack(fill="x", pady=(0, 10))
+        ttk.Label(filters, text="Suche:").pack(side="left")
+        self.history_search = ttk.Entry(filters, width=28)
+        self.history_search.pack(side="left", padx=(6, 16))
+        self.history_search.bind("<Return>", lambda _event: self.refresh_history())
+        ttk.Label(filters, text="Status:").pack(side="left")
+        self.history_status = ttk.Combobox(
+            filters,
+            values=("Alle", "laufend", "abgeschlossen", "korrigiert"),
+            state="readonly",
+            width=16,
+        )
+        self.history_status.set("Alle")
+        self.history_status.pack(side="left", padx=6)
+        ttk.Button(filters, text="Filtern", command=self.refresh_history).pack(side="left", padx=6)
+        ttk.Button(filters, text="Zurücksetzen", command=self.reset_history_filter).pack(side="left")
         columns = ("date", "order", "die", "operation", "times", "quantity", "status")
         self.history_tree = ttk.Treeview(
             self.history_tab, columns=columns, show="headings", height=18
@@ -233,6 +262,104 @@ class WerkMateApp(tk.Tk):
         self.notified_session_id = None
         self.tabs.select(self.dashboard_tab)
         self.refresh_all()
+
+    def edit_selected_order(self) -> None:
+        try:
+            order = self.database.get_order(self.selected_order_id())
+            if order is None:
+                raise ValueError("Auftrag nicht gefunden.")
+        except ValueError as error:
+            messagebox.showerror("Keine Auswahl", str(error), parent=self)
+            return
+
+        dialog = tk.Toplevel(self)
+        dialog.title(f"Auftrag {order['order_number']} bearbeiten")
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+        body = ttk.Frame(dialog, padding=18)
+        body.pack(fill="both", expand=True)
+        values = (
+            ("Auftragsnummer", order["order_number"], False),
+            ("Gesenknummer", order["die_number"], True),
+            ("Arbeitsgang", order["operation"], True),
+            ("Gesamtmenge", str(order["original_quantity"]), True),
+            ("Vorgabe min/Stück", str(seconds_to_minutes(order["seconds_per_piece"])), True),
+            ("Auftragsnotiz", order["note"], True),
+        )
+        entries: list[ttk.Entry] = []
+        for row, (label, value, enabled) in enumerate(values):
+            ttk.Label(body, text=label).grid(row=row, column=0, sticky="w", pady=5)
+            entry = ttk.Entry(body, width=38)
+            entry.insert(0, value)
+            entry.configure(state="normal" if enabled else "disabled")
+            entry.grid(row=row, column=1, sticky="ew", padx=(12, 0), pady=5)
+            entries.append(entry)
+        ttk.Label(
+            body,
+            text="Bestehende Meldungen behalten immer ihre damalige Vorgabezeit.",
+            style="Muted.TLabel",
+        ).grid(row=6, column=0, columnspan=2, sticky="w", pady=(10, 4))
+
+        def save() -> None:
+            try:
+                self.database.update_order(
+                    int(order["id"]),
+                    die_number=entries[1].get(),
+                    operation=entries[2].get(),
+                    original_quantity=int(entries[3].get()),
+                    seconds_per_piece=minutes_to_seconds(entries[4].get()),
+                    note=entries[5].get(),
+                )
+            except (ValueError, TypeError) as error:
+                messagebox.showerror("Änderung nicht möglich", str(error), parent=dialog)
+                return
+            dialog.destroy()
+            self.refresh_orders()
+
+        buttons = ttk.Frame(body)
+        buttons.grid(row=7, column=0, columnspan=2, sticky="e", pady=(14, 0))
+        ttk.Button(buttons, text="Abbrechen", command=dialog.destroy).pack(side="left", padx=6)
+        ttk.Button(buttons, text="Änderungen speichern", style="Primary.TButton", command=save).pack(
+            side="left"
+        )
+
+    def show_order_corrections(self) -> None:
+        try:
+            order_id = self.selected_order_id()
+        except ValueError as error:
+            messagebox.showerror("Keine Auswahl", str(error), parent=self)
+            return
+        labels = {
+            "die_number": "Gesenknummer", "operation": "Arbeitsgang",
+            "original_quantity": "Gesamtmenge", "seconds_per_piece": "Vorgabezeit",
+            "note": "Notiz", "status": "Status",
+        }
+        corrections = self.database.corrections("order", order_id)
+        if not corrections:
+            messagebox.showinfo("Änderungen", "Für diesen Auftrag gibt es keine Änderungen.", parent=self)
+            return
+        lines = []
+        for item in corrections:
+            changed = display_time(item["changed_at"])
+            field = labels.get(item["field_name"], item["field_name"])
+            lines.append(
+                f"{changed} · {field}\n  {item['old_value']} → {item['new_value']}\n"
+                f"  {item['reason'] or 'ohne Begründung'}"
+            )
+        messagebox.showinfo("Änderungsprotokoll", "\n\n".join(lines), parent=self)
+
+    def resume_selected(self) -> None:
+        try:
+            order_id = self.selected_order_id()
+            order = self.database.get_order(order_id)
+            if order is None or order["status"] != "abgegeben":
+                raise ValueError("Bitte einen zuvor abgegebenen Auftrag auswählen.")
+            self.database.resume_order(order_id)
+        except ValueError as error:
+            messagebox.showerror("Wiederaufnahme nicht möglich", str(error), parent=self)
+            return
+        self.refresh_orders()
 
     def hand_off_selected(self) -> None:
         try:
@@ -367,7 +494,13 @@ class WerkMateApp(tk.Tk):
 
     def refresh_history(self) -> None:
         self.history_tree.delete(*self.history_tree.get_children())
-        for item in self.database.history(limit=500):
+        status = self.history_status.get() if hasattr(self, "history_status") else "Alle"
+        search = self.history_search.get() if hasattr(self, "history_search") else ""
+        for item in self.database.history(
+            limit=500,
+            search=search,
+            status="" if status == "Alle" else status,
+        ):
             start = display_time(item["reported_started_at"])
             end = display_time(item["reported_ended_at"])
             self.history_tree.insert(
@@ -378,6 +511,11 @@ class WerkMateApp(tk.Tk):
                     item["status"],
                 )
             )
+
+    def reset_history_filter(self) -> None:
+        self.history_search.delete(0, tk.END)
+        self.history_status.set("Alle")
+        self.refresh_history()
 
     def show_history_details(self, _event=None) -> None:
         selected = self.history_tree.selection()

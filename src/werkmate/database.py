@@ -335,18 +335,100 @@ class WerkMateDatabase:
     def hand_off_order(self, order_id: int, *, reason: str = "") -> None:
         self.update_field("order", order_id, "status", "abgegeben", reason=reason)
 
-    def history(self, *, limit: int = 100) -> list[dict[str, Any]]:
+    def resume_order(self, order_id: int) -> None:
+        order = self.get_order(order_id)
+        if order is None:
+            raise ValueError("Auftrag nicht gefunden.")
+        if order["open_quantity"] <= 0:
+            raise ValueError("Der Auftrag besitzt keine offene Menge.")
+        self.update_field(
+            "order", order_id, "status", "teilweise_erledigt", reason="Erneut aufgenommen"
+        )
+
+    def update_order(
+        self,
+        order_id: int,
+        *,
+        die_number: str,
+        operation: str,
+        original_quantity: int,
+        seconds_per_piece: int,
+        note: str,
+        reason: str = "Manuelle Auftragskorrektur",
+    ) -> None:
+        current = self.get_order(order_id)
+        if current is None:
+            raise ValueError("Auftrag nicht gefunden.")
+        if not die_number.strip() or not operation.strip():
+            raise ValueError("Gesenknummer und Arbeitsgang dürfen nicht leer sein.")
+        if original_quantity < int(current["completed_quantity"]):
+            raise ValueError("Die Gesamtmenge darf nicht kleiner als die bereits gemeldete Menge sein.")
+        if original_quantity <= 0 or seconds_per_piece <= 0:
+            raise ValueError("Menge und Vorgabezeit müssen größer als null sein.")
+
+        changes = {
+            "die_number": die_number.strip(),
+            "operation": operation.strip(),
+            "original_quantity": original_quantity,
+            "seconds_per_piece": seconds_per_piece,
+            "note": note.strip(),
+        }
+        now = self._now()
+        with self.connect() as connection:
+            for field_name, new_value in changes.items():
+                old_value = current[field_name]
+                if old_value == new_value:
+                    continue
+                connection.execute(
+                    f"UPDATE orders SET {field_name} = ?, updated_at = ? WHERE id = ?",  # noqa: S608
+                    (new_value, now, order_id),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO correction_log(
+                        entity_type, entity_id, field_name, old_value, new_value,
+                        reason, changed_at
+                    ) VALUES ('order', ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        order_id, field_name, json.dumps(old_value), json.dumps(new_value),
+                        reason.strip(), now,
+                    ),
+                )
+
+    def history(
+        self,
+        *,
+        limit: int = 100,
+        search: str = "",
+        status: str = "",
+    ) -> list[dict[str, Any]]:
+        conditions: list[str] = []
+        parameters: list[Any] = []
+        if search.strip():
+            term = f"%{search.strip()}%"
+            conditions.append(
+                "(o.order_number LIKE ? OR o.die_number LIKE ? OR o.operation LIKE ? "
+                "OR ws.note LIKE ? OR o.note LIKE ?)"
+            )
+            parameters.extend([term] * 5)
+        if status.strip():
+            conditions.append("ws.status = ?")
+            parameters.append(status.strip())
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        parameters.append(limit)
         with self.connect() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT ws.*, o.order_number, o.die_number, o.operation,
                        o.original_quantity
                 FROM work_sessions ws
                 JOIN orders o ON o.id = ws.order_id
+                {where}
                 ORDER BY ws.reported_started_at DESC, ws.id DESC
                 LIMIT ?
-                """,
-                (limit,),
+                """,  # noqa: S608 -- where contains only fixed fragments
+                parameters,
             ).fetchall()
         return [dict(row) for row in rows]
 

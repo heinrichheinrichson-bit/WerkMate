@@ -152,3 +152,76 @@ def test_database_backup_contains_orders(database, tmp_path) -> None:
     backup_path = database.backup_to(tmp_path / "backup.sqlite3")
     backup = WerkMateDatabase(backup_path)
     assert backup.find_order("FA-4711")["die_number"] == "8720"
+
+
+def test_order_edit_preserves_correction_history(database) -> None:
+    order_id = create_order(database)
+    database.update_order(
+        order_id,
+        die_number="8721",
+        operation="FP2",
+        original_quantity=25,
+        seconds_per_piece=1_080,
+        note="Vorgabe geändert",
+    )
+    order = database.get_order(order_id)
+    assert order["die_number"] == "8721"
+    assert order["seconds_per_piece"] == 1_080
+    fields = {item["field_name"] for item in database.corrections("order", order_id)}
+    assert fields == {"die_number", "operation", "original_quantity", "seconds_per_piece", "note"}
+
+
+def test_order_quantity_cannot_be_reduced_below_reported_amount(database) -> None:
+    order_id = create_order(database)
+    start = datetime(2026, 8, 26, 6)
+    session_id = database.start_session(
+        order_id=order_id,
+        shift_name="Schicht 1",
+        quantity_to_process=20,
+        seconds_per_piece=1_200,
+        actual_started_at=start,
+        reported_started_at=start,
+        target_end=start + timedelta(hours=7),
+        pause_seconds=0,
+    )
+    database.complete_session(
+        session_id,
+        completed_quantity=20,
+        actual_confirmed_at=start + timedelta(hours=7),
+        reported_ended_at=start + timedelta(hours=7),
+    )
+    with pytest.raises(ValueError, match="bereits gemeldete"):
+        database.update_order(
+            order_id,
+            die_number="8720",
+            operation="FP1",
+            original_quantity=19,
+            seconds_per_piece=1_200,
+            note="",
+        )
+
+
+def test_handed_off_order_can_be_resumed(database) -> None:
+    order_id = create_order(database)
+    database.hand_off_order(order_id)
+    database.resume_order(order_id)
+    assert database.get_order(order_id)["status"] == "teilweise_erledigt"
+
+
+def test_history_can_be_searched_and_filtered(database) -> None:
+    order_id = create_order(database)
+    start = datetime(2026, 8, 26, 6)
+    database.start_session(
+        order_id=order_id,
+        shift_name="Schicht 1",
+        quantity_to_process=4,
+        seconds_per_piece=1_200,
+        actual_started_at=start,
+        reported_started_at=start,
+        target_end=start + timedelta(minutes=80),
+        pause_seconds=0,
+        note="Sonderprüfung",
+    )
+    assert len(database.history(search="Sonderprüfung")) == 1
+    assert len(database.history(search="FA-4711", status="laufend")) == 1
+    assert database.history(status="abgeschlossen") == []

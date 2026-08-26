@@ -1,4 +1,4 @@
-# WerkMate 0.4.0 – Anleitung
+# WerkMate 0.5.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -129,7 +129,23 @@ Der Reiter **Historie** zeigt alle persönlichen Arbeitseinsätze mit:
 Ein Doppelklick auf einen Eintrag öffnet weitere Details einschließlich
 Soll-Ende und Notiz.
 
-## 9. Wo liegen die Daten?
+Die Suche findet Auftragsnummern, Gesenknummern, Arbeitsgänge und Notiztexte.
+Zusätzlich kann die Liste nach Meldungsstatus gefiltert werden.
+
+## 9. Gespeicherte Aufträge korrigieren
+
+Markiere einen Auftrag und klicke auf **Auftrag bearbeiten** oder doppelklicke
+auf seine Tabellenzeile. Gesenknummer, Arbeitsgang, Gesamtmenge, aktuelle
+Vorgabezeit und Auftragsnotiz können geändert werden.
+
+Historische Arbeitseinsätze behalten ihre damals gespeicherte Vorgabezeit. Über
+**Änderungen anzeigen** bleibt nachvollziehbar, wann welcher Auftragswert
+korrigiert wurde.
+
+Ein abgegebener Restauftrag kann markiert und mit **Abgegebenen Auftrag wieder
+aufnehmen** erneut in die persönliche Bearbeitung übernommen werden.
+
+## 10. Wo liegen die Daten?
 
 Die lokale Datenbank liegt standardmäßig hier:
 
@@ -145,7 +161,7 @@ C:\Users\DEIN-NAME\AppData\Local\WerkMate\werkmate.sqlite3
 
 Die Daten werden nicht automatisch zu GitHub oder in eine Cloud übertragen.
 
-## 10. Datensicherung
+## 11. Datensicherung
 
 Klicke oben rechts auf **Daten sichern**, wähle einen Zielordner und speichere
 die vorgeschlagene `.sqlite3`-Datei. WerkMate erzeugt eine konsistente Kopie
@@ -161,20 +177,19 @@ Zur Wiederherstellung WerkMate schließen und die gesicherte Datei wieder an
 denselben Ort kopieren. Eine komfortable Sicherungsfunktion in der Oberfläche
 ist für eine spätere Version vorgesehen.
 
-## 11. Bekannte Grenzen dieses Stands
+## 12. Bekannte Grenzen dieses Stands
 
 - noch keine Android- oder iOS-App
 - keine zuverlässige Benachrichtigung bei geschlossenem Programm
 - noch kein Gesenk- und Vorgabezeiten-Katalog
-- noch keine Bearbeitungsmaske für bereits gespeicherte Aufträge
 - noch keine Wiederherstellung einer Sicherung direkt in der Oberfläche
-- noch keine grafische Korrekturhistorie
+- Arbeitseinsätze können noch nicht nachträglich in der Oberfläche korrigiert werden
 - keine Statistiken und Exporte
 
 Der Rechenkern, die lokale Speicherung und der grundlegende persönliche Ablauf
 sind bereits vorhanden und automatisiert getestet.
 
-## 12. Optionale Konsolenbedienung
+## 13. Optionale Konsolenbedienung
 
 Die bisherige Konsolenoberfläche bleibt erhalten. Ihre Befehle sind in
 [`KONSOLEN-MVP.md`](KONSOLEN-MVP.md) dokumentiert.
