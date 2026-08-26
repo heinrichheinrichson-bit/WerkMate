@@ -58,6 +58,93 @@ class WerkMateService:
             note=note,
         )
 
+    def quick_start(
+        self,
+        *,
+        total_quantity: int,
+        reported_start: datetime,
+        shift_number: int,
+        order_number: str = "",
+        die_number: str = "",
+        operation: str = "",
+        seconds_per_piece: int | None = None,
+        note: str = "",
+    ) -> dict:
+        """Legt aus Minimalangaben einen Auftrag an und startet die Schichtmenge."""
+        if self.database.active_session() is not None:
+            raise ValueError("Es läuft bereits ein persönlicher Arbeitseinsatz.")
+        if total_quantity <= 0:
+            raise ValueError("Die Gesamtmenge muss größer als null sein.")
+        shift = shift_for_start(shift_number, reported_start)
+        if reported_start >= shift.end:
+            raise ValueError("Die Anmeldezeit liegt nicht vor dem Schichtende.")
+
+        resolved_die = die_number.strip() or "MANUELL"
+        resolved_operation = operation.strip().upper()
+        resolved_seconds = seconds_per_piece
+        source = "manuell"
+        if resolved_seconds is None:
+            if not die_number.strip():
+                raise ValueError("Bitte Stückzeit oder eine Gesenknummer aus dem Katalog angeben.")
+            standards = self.database.standards_for_die(die_number)
+            if resolved_operation:
+                standards = [
+                    item for item in standards if item["operation_code"] == resolved_operation
+                ]
+            if not standards:
+                raise ValueError("Für diese Auswahl wurde keine aktive Vorgabezeit gefunden.")
+            if len(standards) > 1:
+                raise ValueError("Dieses Gesenk besitzt mehrere Arbeitsgänge. Bitte einen auswählen.")
+            standard = standards[0]
+            resolved_operation = str(standard["operation_code"])
+            resolved_seconds = int(standard["seconds_per_piece"])
+            source = "katalog"
+        if resolved_seconds <= 0:
+            raise ValueError("Die Stückzeit muss größer als null sein.")
+        resolved_operation = resolved_operation or "MANUELL"
+        resolved_number = order_number.strip()
+        if not resolved_number:
+            base_number = f"SCHNELL-{reported_start:%Y%m%d-%H%M%S}"
+            resolved_number = base_number
+            suffix = 2
+            while self.database.find_order(resolved_number) is not None:
+                resolved_number = f"{base_number}-{suffix}"
+                suffix += 1
+
+        order_id = self.create_order(
+            order_number=resolved_number,
+            die_number=resolved_die,
+            operation=resolved_operation,
+            original_quantity=total_quantity,
+            seconds_per_piece=resolved_seconds,
+            note=note,
+        )
+        forecast = self.production_forecast(
+            order_id=order_id,
+            reported_start=reported_start,
+            shift_number=shift_number,
+        )
+        planned_quantity = int(forecast["complete_pieces"])
+        if planned_quantity == 0:
+            planned_quantity = 1
+        session_id = self.start_work(
+            order_id=order_id,
+            quantity=min(planned_quantity, total_quantity),
+            reported_start=reported_start,
+            shift_number=shift_number,
+            note=note,
+        )
+        return {
+            "order_id": order_id,
+            "session_id": session_id,
+            "order_number": resolved_number,
+            "die_number": resolved_die,
+            "operation": resolved_operation,
+            "seconds_per_piece": resolved_seconds,
+            "planned_quantity": min(planned_quantity, total_quantity),
+            "source": source,
+        }
+
     def start_work(
         self,
         *,
@@ -139,6 +226,10 @@ class WerkMateService:
             "complete_pieces": complete_pieces,
             "remainder_seconds": remainder_seconds,
             "next_piece_overtime_seconds": next_piece_overtime,
+            "next_piece_finish": (
+                shift.end + timedelta(seconds=next_piece_overtime)
+                if has_more_pieces else None
+            ),
             "open_after_shift": max(open_quantity - complete_pieces, 0),
             "open_quantity": open_quantity,
         }
@@ -172,6 +263,9 @@ class WerkMateService:
             session["unused_seconds"] = int(remainder.total_seconds())
             session["next_piece_overtime_seconds"] = (
                 int(overtime.total_seconds()) if pieces < open_quantity else 0
+            )
+            session["next_piece_finish"] = (
+                shift_end + overtime if pieces < open_quantity else None
             )
             available_seconds = int(
                 productive_duration_between(

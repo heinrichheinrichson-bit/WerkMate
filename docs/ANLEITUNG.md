@@ -1,4 +1,4 @@
-# WerkMate 0.8.0 – Anleitung
+# WerkMate 0.9.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -55,6 +55,19 @@ beispielsweise `24/24`.
 Ist die Gesenknummer bereits im Katalog vorhanden, kann sie aus der Liste
 gewählt werden. WerkMate bietet danach nur die zugehörigen Arbeitsgänge an und
 trägt deren aktuelle Vorgabezeit automatisch ein.
+
+### Noch schneller: Schnellstart
+
+Im Reiter **Schnellstart** reichen folgende Kombinationen:
+
+- Gesamtmenge und Stückzeit
+- Gesamtmenge und Gesenknummer, wenn im Katalog genau ein Arbeitsgang hinterlegt ist
+- Gesamtmenge, Gesenknummer und Arbeitsgang
+
+Auftragsnummer und Notiz sind optional. Ohne Auftragsnummer erzeugt WerkMate
+eine eindeutige Schnellauftragsnummer. Anmeldezeit und aktuelle Schicht sind
+bereits vorausgefüllt. WerkMate legt den Auftrag an, bestimmt die innerhalb der
+Restschicht vollständig mögliche Einsatzmenge und startet ihn sofort.
 
 ## 4. Gesenk- und Vorgabezeiten-Katalog pflegen
 
@@ -115,6 +128,14 @@ WerkMate wechselt zum laufenden Auftrag und zeigt:
 Die Schichtprognose wird ab der gewählten Anmeldezeit berechnet und bleibt
 während des Einsatzes stabil. Nur der Countdown bis zur geplanten Rückmeldung
 läuft weiter.
+
+Die mögliche Überzeit wird in Klartext angezeigt. Statt einer abstrakten Angabe
+wie `+00:05:00` steht dort beispielsweise:
+
+> Ein weiteres Stück wäre um 21:50 fertig (5 Min. nach Schichtende).
+
+Diese Information ist nur eine Entscheidungshilfe. Sie fordert nicht dazu auf,
+das weitere Stück zu beginnen.
 
 Die feste Schichtpause wird nur abrechnungstechnisch berücksichtigt. Der Timer
 wird nicht manuell eingefroren.

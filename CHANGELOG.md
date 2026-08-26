@@ -4,6 +4,23 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.9.0] - 2026-08-26
+
+### Hinzugefügt
+
+- Schnellstart mit Gesamtmenge plus manueller Stückzeit
+- Schnellstart mit Gesenknummer und automatisch geladener Katalogvorgabe
+- Automatische Arbeitsgangwahl, wenn nur eine Vorgabe zum Gesenk existiert
+- Eindeutige Schnellauftragsnummer, falls keine Auftragsnummer eingegeben wird
+- Automatische Schicht- und Anmeldezeitvorauswahl
+- Automatisch empfohlene persönliche Einsatzmenge innerhalb der Restschicht
+
+### Geändert
+
+- Abstrakte Anzeige „Nächstes Stück: +00:05:00 Überzeit“ durch Klartext ersetzt
+- Zusätzliche Stückprognose nennt konkrete Fertigzeit und Minuten nach Schichtende
+- Überzeit-Hinweis wird als optionale Entscheidungshilfe erklärt
+
 ## [0.8.0] - 2026-08-26
 
 ### Hinzugefügt

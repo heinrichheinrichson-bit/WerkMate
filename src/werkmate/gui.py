@@ -80,15 +80,18 @@ class WerkMateApp(tk.Tk):
         self.tabs = ttk.Notebook(self)
         self.tabs.pack(fill="both", expand=True, padx=14, pady=(0, 14))
         self.dashboard_tab = ttk.Frame(self.tabs, padding=18)
+        self.quick_tab = ttk.Frame(self.tabs, padding=18)
         self.orders_tab = ttk.Frame(self.tabs, padding=18)
         self.catalog_tab = ttk.Frame(self.tabs, padding=18)
         self.history_tab = ttk.Frame(self.tabs, padding=18)
         self.tabs.add(self.dashboard_tab, text="Laufender Auftrag")
+        self.tabs.add(self.quick_tab, text="Schnellstart")
         self.tabs.add(self.orders_tab, text="Aufträge")
         self.tabs.add(self.catalog_tab, text="Gesenk-Katalog")
         self.tabs.add(self.history_tab, text="Historie")
 
         self._build_dashboard()
+        self._build_quick_start()
         self._build_orders()
         self._build_catalog()
         self._build_history()
@@ -225,6 +228,104 @@ class WerkMateApp(tk.Tk):
         )
         self.shift_number.set(str(current_shift_number(local_now())))
         self._fill_start_now()
+
+    def _build_quick_start(self) -> None:
+        ttk.Label(self.quick_tab, text="Mit möglichst wenigen Angaben starten", style="Title.TLabel").pack(
+            anchor="w"
+        )
+        ttk.Label(
+            self.quick_tab,
+            text="Pflicht ist nur die Gesamtmenge plus entweder eine Stückzeit oder eine bekannte Gesenknummer.",
+            style="Muted.TLabel",
+        ).pack(anchor="w", pady=(4, 18))
+        form = ttk.LabelFrame(self.quick_tab, text="Schnellauftrag", padding=18)
+        form.pack(fill="x")
+
+        labels = (
+            "Gesamtmenge *", "Stückzeit min", "Gesenknummer", "Arbeitsgang",
+            "Auftragsnummer (optional)", "Anmeldezeit", "Schicht",
+        )
+        self.quick_entries: list[ttk.Entry] = []
+        for index, label in enumerate(labels):
+            row = (index // 4) * 2
+            column = index % 4
+            ttk.Label(form, text=label).grid(row=row, column=column, sticky="w", padx=6)
+            if index in (2, 3):
+                entry = ttk.Combobox(form, width=22)
+            elif index == 6:
+                entry = ttk.Combobox(form, values=("1", "2", "3"), state="readonly", width=22)
+            else:
+                entry = ttk.Entry(form, width=24)
+            entry.grid(row=row + 1, column=column, sticky="ew", padx=6, pady=(3, 14))
+            self.quick_entries.append(entry)
+            form.columnconfigure(column, weight=1)
+
+        self.quick_entries[2].bind("<FocusIn>", lambda _event: self._refresh_quick_dies())
+        self.quick_entries[2].bind("<<ComboboxSelected>>", self._quick_die_selected)
+        self.quick_entries[6].set(str(current_shift_number(local_now())))
+        self._set_entry(self.quick_entries[5], local_now().strftime("%Y-%m-%d %H:%M"))
+        ttk.Label(form, text="Notiz (optional)").grid(row=4, column=0, sticky="w", padx=6)
+        self.quick_note = ttk.Entry(form)
+        self.quick_note.grid(row=5, column=0, columnspan=3, sticky="ew", padx=6)
+        ttk.Button(
+            form,
+            text="JETZT STARTEN",
+            style="Primary.TButton",
+            command=self.quick_start,
+        ).grid(row=5, column=3, sticky="ew", padx=6)
+
+        examples = ttk.LabelFrame(self.quick_tab, text="Mögliche Eingabekombinationen", padding=14)
+        examples.pack(fill="x", pady=18)
+        ttk.Label(
+            examples,
+            text=(
+                "• Menge + Stückzeit\n"
+                "• Menge + Gesenknummer (wenn genau ein Arbeitsgang hinterlegt ist)\n"
+                "• Menge + Gesenknummer + Arbeitsgang\n"
+                "• Optional zusätzlich eine echte Auftragsnummer und Notiz\n\n"
+                "Anmeldezeit und aktuelle Schicht sind bereits vorausgefüllt. WerkMate erstellt den Auftrag, "
+                "berechnet die sinnvolle Schichtmenge und startet den persönlichen Einsatz."
+            ),
+            justify="left",
+        ).pack(anchor="w")
+
+    def _refresh_quick_dies(self) -> None:
+        dies = sorted({item["die_number"] for item in self.database.list_catalog()})
+        self.quick_entries[2].configure(values=dies)
+
+    def _quick_die_selected(self, _event=None) -> None:
+        standards = self.database.standards_for_die(self.quick_entries[2].get())
+        self.quick_entries[3].configure(values=tuple(item["operation_code"] for item in standards))
+        if len(standards) == 1:
+            self.quick_entries[3].set(standards[0]["operation_code"])
+        else:
+            self.quick_entries[3].set("")
+
+    def quick_start(self) -> None:
+        try:
+            minutes = self.quick_entries[1].get().strip()
+            result = self.service.quick_start(
+                total_quantity=int(self.quick_entries[0].get()),
+                seconds_per_piece=minutes_to_seconds(minutes) if minutes else None,
+                die_number=self.quick_entries[2].get(),
+                operation=self.quick_entries[3].get(),
+                order_number=self.quick_entries[4].get(),
+                reported_start=parse_datetime(self.quick_entries[5].get()),
+                shift_number=int(self.quick_entries[6].get()),
+                note=self.quick_note.get(),
+            )
+        except (ValueError, TypeError) as error:
+            messagebox.showerror("Schnellstart nicht möglich", str(error), parent=self)
+            return
+        self.notified_session_id = None
+        self.refresh_all()
+        self.tabs.select(self.dashboard_tab)
+        messagebox.showinfo(
+            "Arbeitseinsatz gestartet",
+            f"{result['order_number']} · {result['planned_quantity']} Stück für diesen Einsatz · "
+            f"Vorgabe aus {result['source']}",
+            parent=self,
+        )
 
     def _build_catalog(self) -> None:
         form = ttk.LabelFrame(self.catalog_tab, text="Vorgabe anlegen oder aktualisieren", padding=12)
@@ -465,9 +566,11 @@ class WerkMateApp(tk.Tk):
             f"danach {forecast['open_after_shift']} Stück offen"
         )
         if forecast["open_after_shift"]:
+            next_finish = forecast["next_piece_finish"]
             text += (
-                f"\nRestzeit im Stück: {format_duration(forecast['remainder_seconds'])} · "
-                f"nächstes Stück vollständig: +{format_duration(forecast['next_piece_overtime_seconds'])}"
+                f"\nDanach bleiben {format_duration(forecast['remainder_seconds'])} bis Schichtende. "
+                f"Ein weiteres Stück wäre um {next_finish:%H:%M} fertig "
+                f"({forecast['next_piece_overtime_seconds'] // 60} Min. nach Schichtende)."
             )
         self.start_forecast.configure(text=text)
 
@@ -787,11 +890,17 @@ class WerkMateApp(tk.Tk):
                  f"{display_time(status['target_end'])}"
         )
         if "pieces_until_shift_end" in status:
+            next_piece_text = ""
+            if status["next_piece_finish"] is not None:
+                next_piece_text = (
+                    f"\nEin weiteres Stück wäre um {status['next_piece_finish']:%H:%M} fertig "
+                    f"({status['next_piece_overtime_seconds'] // 60} Min. nach Schichtende)."
+                )
             self.forecast_label.configure(
                 text=f"Schichtprognose ab Anmeldung: "
                      f"{format_piece_equivalent(status['target_piece_equivalent'])} Stück\n"
-                     f"Davon vollständig: {status['pieces_until_shift_end']} Stück\n"
-                     f"Nächstes Stück: +{format_duration(status['next_piece_overtime_seconds'])} Überzeit"
+                     f"Davon vollständig: {status['pieces_until_shift_end']} Stück"
+                     f"{next_piece_text}"
             )
         else:
             self.forecast_label.configure(text="Keine Schicht für die Reststückprognose gewählt.")
@@ -862,6 +971,7 @@ class WerkMateApp(tk.Tk):
         self.refresh_dashboard()
         self.refresh_catalog()
         self._refresh_die_suggestions()
+        self._refresh_quick_dies()
         self.refresh_history()
 
     def _tick(self) -> None:

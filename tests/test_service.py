@@ -45,6 +45,7 @@ def test_service_calculates_pause_and_status(tmp_path) -> None:
     later_status = service.status(datetime(2026, 8, 26, 20, 0))
     assert later_status["target_piece_equivalent"] == Decimal("23.1")
     assert later_status["next_piece_overtime_seconds"] == 18 * 60
+    assert later_status["next_piece_finish"] == datetime(2026, 8, 26, 22, 3)
 
 
 def test_service_reports_overdue_and_finishes_partial_quantity(tmp_path) -> None:
