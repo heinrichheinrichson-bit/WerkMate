@@ -10,7 +10,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 class WerkMateDatabase:
@@ -51,6 +51,7 @@ class WerkMateDatabase:
                     seconds_per_piece INTEGER NOT NULL CHECK(seconds_per_piece > 0),
                     note TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'offen',
+                    is_temporary INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -136,6 +137,7 @@ class WerkMateDatabase:
                     order_id INTEGER NOT NULL REFERENCES orders(id),
                     mode TEXT NOT NULL,
                     value INTEGER,
+                    start_override TEXT,
                     status TEXT NOT NULL DEFAULT 'offen',
                     session_id INTEGER REFERENCES work_sessions(id),
                     created_at TEXT NOT NULL,
@@ -181,6 +183,20 @@ class WerkMateDatabase:
                 )
             if "planned_seconds" not in columns:
                 connection.execute("ALTER TABLE work_sessions ADD COLUMN planned_seconds INTEGER")
+            order_columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(orders)").fetchall()
+            }
+            if "is_temporary" not in order_columns:
+                connection.execute(
+                    "ALTER TABLE orders ADD COLUMN is_temporary INTEGER NOT NULL DEFAULT 0"
+                )
+            plan_columns = {
+                row["name"] for row in connection.execute(
+                    "PRAGMA table_info(shift_plan_items)"
+                ).fetchall()
+            }
+            if "start_override" not in plan_columns:
+                connection.execute("ALTER TABLE shift_plan_items ADD COLUMN start_override TEXT")
             connection.execute(
                 "INSERT OR REPLACE INTO metadata(key, value) VALUES('schema_version', ?)",
                 (str(SCHEMA_VERSION),),
@@ -272,12 +288,17 @@ class WerkMateDatabase:
                 connection.execute(
                     """
                     INSERT INTO shift_plan_items(
-                        plan_id, position, order_id, mode, value, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        plan_id, position, order_id, mode, value, start_override,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         plan_id, position, int(item["order_id"]), str(item["mode"]),
-                        item.get("value"), now, now,
+                        item.get("value"),
+                        item.get("start_override").isoformat()
+                        if isinstance(item.get("start_override"), datetime)
+                        else item.get("start_override"),
+                        now, now,
                     ),
                 )
         return plan_id
@@ -332,6 +353,7 @@ class WerkMateDatabase:
         original_quantity: int,
         seconds_per_piece: int,
         note: str = "",
+        is_temporary: bool = False,
     ) -> int:
         now = self._now()
         with self.connect() as connection:
@@ -339,12 +361,12 @@ class WerkMateDatabase:
                 """
                 INSERT INTO orders(
                     order_number, die_number, operation, original_quantity,
-                    seconds_per_piece, note, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    seconds_per_piece, note, is_temporary, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     order_number.strip(), die_number.strip(), operation.strip(),
-                    original_quantity, seconds_per_piece, note.strip(), now, now,
+                    original_quantity, seconds_per_piece, note.strip(), int(is_temporary), now, now,
                 ),
             )
             return int(cursor.lastrowid)
@@ -384,6 +406,7 @@ class WerkMateDatabase:
             conditions.append("status != 'abgegeben'")
         if not include_archived:
             conditions.append("status != 'archiviert'")
+        conditions.append("is_temporary = 0")
         clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         with self.connect() as connection:
             ids = connection.execute(

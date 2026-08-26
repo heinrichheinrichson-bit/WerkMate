@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.20.0 – Duplizieren, Papierkorb und Stornierungen**
+**Version 0.21.0 – visueller Schichtablauf mit manuellen Planaufträgen**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern

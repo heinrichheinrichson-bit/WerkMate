@@ -4,6 +4,18 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.21.0] - 2026-08-26
+
+### Neu
+
+- Erste visuelle Schichtablauf-Timeline mit verbundenen Auftragskarten
+- Manuelle Planaufträge ohne vorhandenen Katalog- oder Auftragsdatensatz
+- Wahlweise nur im Ablauf verwenden oder dauerhaft als Auftrag speichern
+- Optionale feste Startzeit für jeden einzelnen Planpunkt
+- Getrennte Anzeige von gesamter Ablaufzeit und produktiver Gesamtvorgabezeit
+- Persistenz der manuellen Startvorgaben über Programmneustarts
+- Automatische Datenbankmigration auf Schema-Version 8
+
 ## [0.20.0] - 2026-08-26
 
 ### Neu

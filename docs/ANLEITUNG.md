@@ -1,4 +1,4 @@
-# WerkMate 0.20.0 – Anleitung
+# WerkMate 0.21.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -243,6 +243,12 @@ Reihenfolge kombiniert werden. Mit **SCHICHT BERECHNEN** wird der Plan zugleich
 lokal gespeichert und beim nächsten Programmstart automatisch wieder geladen.
 Für jeden Planpunkt stehen vier Arten bereit:
 
+**Manuellen Auftrag eintragen** nimmt zusätzlich Arbeiten auf, die weder im
+Gesenk-Katalog noch unter Aufträge vorhanden sind. Diese können nur für den
+aktuellen Schichtablauf gelten oder optional dauerhaft als Auftrag gespeichert
+werden. Über **Startzeit bearbeiten** kann ein Planpunkt eine feste eigene
+Startzeit erhalten; ohne Vorgabe schließt er automatisch an den vorherigen an.
+
 - **Offene Stück fest:** Eine vorgegebene Restmenge vollständig einplanen.
 - **Restschicht mit Auftrag füllen:** So viele vollständige Stück berechnen, wie
   nach den vorherigen Planpunkten noch möglich sind.
@@ -268,6 +274,10 @@ Mit **Ersten Planpunkt starten** wird der erste Block übernommen. Nach seiner
 Rückmeldung verwendet WerkMate die tatsächliche Abmeldezeit automatisch als
 Beginn des Restplans. Alle folgenden Startzeiten, Stückzahlen und Überzeiten
 werden neu berechnet. Der Restplan bleibt auch nach dem Schließen erhalten.
+
+Der berechnete Ablauf erscheint als verbundene Kartenfolge. Jede Karte zeigt
+Auftrag, Gesenk/AG, Start, Ende, Stückzahl und Dauer. Oberhalb stehen sowohl die
+gesamte Uhrzeit des Ablaufs als auch die reine produktive Vorgabezeit.
 
 ## 10. Einen versehentlich gestarteten Einsatz abbrechen
 

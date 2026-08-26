@@ -118,3 +118,33 @@ def test_saved_plan_survives_restart_and_advances_from_actual_report_time(tmp_pa
     )
     assert remaining[0]["planned_start"] == datetime(2026, 8, 26, 10, 18)
     assert remaining[0]["quantity"] == 13
+
+
+def test_manual_start_override_creates_a_gap_and_is_persisted(tmp_path) -> None:
+    database = WerkMateDatabase(tmp_path / "db.sqlite3")
+    service = WerkMateService(database)
+    first = service.create_order(
+        order_number="A", die_number="1", operation="FP",
+        original_quantity=1, seconds_per_piece=30 * 60,
+    )
+    second = database.create_order(
+        order_number="PLAN-MANUELL", die_number="X", operation="ZP",
+        original_quantity=2, seconds_per_piece=15 * 60, is_temporary=True,
+    )
+    items = [
+        {"order_id": first, "mode": "work_fixed", "value": 1},
+        {"order_id": second, "mode": "work_fixed", "value": 2,
+         "start_override": datetime(2026, 8, 26, 7)},
+    ]
+    result = service.plan_sequence(
+        items=items, reported_start=datetime(2026, 8, 26, 5, 45), shift_number=1,
+    )
+    assert result[0]["planned_end"] == datetime(2026, 8, 26, 6, 15)
+    assert result[1]["planned_start"] == datetime(2026, 8, 26, 7)
+    assert second not in {item["id"] for item in database.list_orders()}
+
+    database.save_shift_plan(
+        reported_start=datetime(2026, 8, 26, 5, 45), shift_number=1, items=items,
+    )
+    saved = database.active_shift_plan()
+    assert saved["items"][1]["start_override"] == "2026-08-26T07:00:00"

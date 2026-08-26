@@ -526,6 +526,16 @@ class WerkMateService:
             seconds_per_piece = int(order["seconds_per_piece"])
             value = item.get("value")
             is_credit = mode.startswith("credit_")
+            override = item.get("start_override")
+            if isinstance(override, str) and override:
+                override = datetime.fromisoformat(override)
+            if override is not None:
+                if override < cursor:
+                    raise ValueError(
+                        f"Die manuelle Startzeit von Planpunkt {position} liegt vor dem Ende "
+                        "des vorherigen Auftrags."
+                    )
+                cursor = override
 
             if mode == "work_fixed":
                 quantity = int(value)

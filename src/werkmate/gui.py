@@ -475,6 +475,9 @@ class WerkMateApp(tk.Tk):
         ttk.Button(add, text="Zum Plan hinzufügen", command=self.add_shift_plan_item).grid(
             row=1, column=3, sticky="ew", padx=(8, 0)
         )
+        ttk.Button(
+            add, text="Manuellen Auftrag eintragen", command=self.add_manual_shift_plan_item
+        ).grid(row=2, column=0, columnspan=4, sticky="ew", pady=(10, 0))
         add.columnconfigure(0, weight=2)
         add.columnconfigure(1, weight=1)
 
@@ -482,14 +485,14 @@ class WerkMateApp(tk.Tk):
         queue_frame.pack(fill="x", pady=10)
         self.plan_queue = ttk.Treeview(
             queue_frame,
-            columns=("pos", "order", "die", "mode", "value"),
+            columns=("pos", "order", "die", "mode", "value", "start"),
             show="headings",
             height=5,
         )
         for column, heading, width in zip(
-            ("pos", "order", "die", "mode", "value"),
-            ("Pos.", "Auftrag", "Gesenk/AG", "Planungsart", "Vorgabe"),
-            (45, 150, 130, 260, 120),
+            ("pos", "order", "die", "mode", "value", "start"),
+            ("Pos.", "Auftrag", "Gesenk/AG", "Planungsart", "Vorgabe", "Startvorgabe"),
+            (45, 150, 130, 230, 110, 130),
         ):
             self.plan_queue.heading(column, text=heading)
             self.plan_queue.column(column, width=width, anchor="center")
@@ -499,6 +502,9 @@ class WerkMateApp(tk.Tk):
         ttk.Button(queue_buttons, text="Ausgewählten entfernen", command=self.remove_shift_plan_item).pack(
             side="left"
         )
+        ttk.Button(
+            queue_buttons, text="Startzeit bearbeiten", command=self.edit_plan_item_start
+        ).pack(side="left", padx=6)
         ttk.Button(queue_buttons, text="Plan leeren", command=self.clear_shift_plan).pack(
             side="left", padx=6
         )
@@ -511,18 +517,12 @@ class WerkMateApp(tk.Tk):
 
         result_frame = ttk.LabelFrame(self.plan_tab, text="Berechneter Ablauf", padding=8)
         result_frame.pack(fill="both", expand=True)
-        columns = ("pos", "order", "kind", "start", "end", "pieces", "equiv", "overtime")
-        self.plan_result_tree = ttk.Treeview(
-            result_frame, columns=columns, show="headings", height=7
+        self.plan_total_label = ttk.Label(
+            result_frame, text="Gesamtzeit: –", font=("Segoe UI", 12, "bold")
         )
-        for column, heading, width in zip(
-            columns,
-            ("Pos.", "Auftrag", "Art", "Start", "Ende", "ganze Stück", "rechnerisch", "Überzeit"),
-            (45, 140, 90, 120, 120, 95, 100, 100),
-        ):
-            self.plan_result_tree.heading(column, text=heading)
-            self.plan_result_tree.column(column, width=width, anchor="center")
-        self.plan_result_tree.pack(fill="both", expand=True)
+        self.plan_total_label.pack(anchor="w", pady=(0, 8))
+        self.plan_cards_frame = ttk.Frame(result_frame)
+        self.plan_cards_frame.pack(fill="both", expand=True)
         ttk.Button(
             result_frame,
             text="Ersten Planpunkt starten",
@@ -572,6 +572,82 @@ class WerkMateApp(tk.Tk):
         })
         self.refresh_shift_plan_queue()
 
+    def add_manual_shift_plan_item(self) -> None:
+        dialog = tk.Toplevel(self)
+        dialog.title("Manuellen Planauftrag eintragen")
+        dialog.transient(self); dialog.grab_set(); dialog.resizable(False, False)
+        body = ttk.Frame(dialog, padding=16); body.pack(fill="both", expand=True)
+        fields = (
+            ("Auftragsnummer (optional)", ""), ("Gesenknummer", "MANUELL"),
+            ("Arbeitsgang", "MANUELL"), ("Stückzahl", ""),
+            ("min/Stück", ""), ("Eigene Startzeit (optional)", ""), ("Notiz", ""),
+        )
+        entries = []
+        for row, (label, value) in enumerate(fields):
+            ttk.Label(body, text=f"{label}:").grid(row=row, column=0, sticky="w", pady=5)
+            entry = ttk.Entry(body, width=38); entry.insert(0, value)
+            entry.grid(row=row, column=1, padx=(12, 0), pady=5); entries.append(entry)
+        save_order = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            body, text="Zusätzlich dauerhaft unter Aufträge speichern", variable=save_order
+        ).grid(row=7, column=0, columnspan=2, sticky="w", pady=(8, 4))
+
+        def add() -> None:
+            try:
+                quantity = int(entries[3].get())
+                seconds = minutes_to_seconds(entries[4].get())
+                if quantity <= 0:
+                    raise ValueError("Die Stückzahl muss größer als null sein.")
+                start_override = (
+                    parse_datetime(entries[5].get()) if entries[5].get().strip() else None
+                )
+                number = entries[0].get().strip() or f"PLAN-{datetime.now():%Y%m%d-%H%M%S}"
+                if self.database.find_order(number) is not None:
+                    raise ValueError("Diese Auftragsnummer ist bereits vorhanden.")
+                order_id = self.database.create_order(
+                    order_number=number,
+                    die_number=entries[1].get().strip() or "MANUELL",
+                    operation=entries[2].get().strip() or "MANUELL",
+                    original_quantity=quantity,
+                    seconds_per_piece=seconds,
+                    note=entries[6].get(),
+                    is_temporary=not save_order.get(),
+                )
+                order = self.database.get_order(order_id)
+                self.shift_plan_items.append({
+                    "order_id": order_id, "mode": "work_fixed", "value": quantity,
+                    "label": "Manueller Planauftrag", "order": order,
+                    "start_override": start_override,
+                })
+            except (ValueError, TypeError) as error:
+                messagebox.showerror("Planauftrag nicht angelegt", str(error), parent=dialog); return
+            dialog.destroy(); self.refresh_shift_plan_queue(); self.refresh_plan_orders()
+
+        ttk.Button(body, text="ZUM SCHICHTABLAUF HINZUFÜGEN", style="Primary.TButton", command=add).grid(
+            row=8, column=0, columnspan=2, sticky="ew", pady=(10, 0)
+        )
+
+    def edit_plan_item_start(self) -> None:
+        selected = self.plan_queue.selection()
+        if not selected:
+            messagebox.showinfo("Keine Auswahl", "Bitte einen Planpunkt auswählen.", parent=self)
+            return
+        item = self.shift_plan_items[int(selected[0])]
+        current = item.get("start_override")
+        value = simpledialog.askstring(
+            "Eigene Startzeit",
+            "Startzeit als YYYY-MM-DD HH:MM eingeben. Leer = automatisch anschließend:",
+            initialvalue=current.strftime("%Y-%m-%d %H:%M") if isinstance(current, datetime) else "",
+            parent=self,
+        )
+        if value is None:
+            return
+        try:
+            item["start_override"] = parse_datetime(value) if value.strip() else None
+        except ValueError as error:
+            messagebox.showerror("Ungültige Startzeit", str(error), parent=self); return
+        self.refresh_shift_plan_queue()
+
     def refresh_shift_plan_queue(self) -> None:
         self.plan_queue.delete(*self.plan_queue.get_children())
         for position, item in enumerate(self.shift_plan_items, start=1):
@@ -585,6 +661,8 @@ class WerkMateApp(tk.Tk):
                     position, item["order"]["order_number"],
                     f"{item['order']['die_number']}/{item['order']['operation']}",
                     item["label"], value,
+                    item.get("start_override").strftime("%d.%m. %H:%M")
+                    if isinstance(item.get("start_override"), datetime) else "automatisch",
                 )
             )
 
@@ -594,7 +672,7 @@ class WerkMateApp(tk.Tk):
             return
         del self.shift_plan_items[int(selected[0])]
         self.refresh_shift_plan_queue()
-        self.plan_result_tree.delete(*self.plan_result_tree.get_children())
+        self.render_shift_plan_cards([])
 
     def clear_shift_plan(self) -> None:
         self.shift_plan_items.clear()
@@ -602,7 +680,7 @@ class WerkMateApp(tk.Tk):
         self.database.discard_shift_plan()
         self.plan_saved_label.configure(text="")
         self.refresh_shift_plan_queue()
-        self.plan_result_tree.delete(*self.plan_result_tree.get_children())
+        self.render_shift_plan_cards([])
 
     def calculate_shift_plan(self, persist: bool = True) -> None:
         self.shift_plan_results = []
@@ -627,18 +705,60 @@ class WerkMateApp(tk.Tk):
             except ValueError as error:
                 messagebox.showerror("Plan nicht gespeichert", str(error), parent=self)
                 return
-        self.plan_result_tree.delete(*self.plan_result_tree.get_children())
-        for item in self.shift_plan_results:
-            self.plan_result_tree.insert(
-                "", "end", values=(
-                    item["position"], item["order_number"],
-                    "Guthaben" if item["kind"] == "credit" else "Bearbeitung",
-                    item["planned_start"].strftime("%d.%m. %H:%M"),
-                    item["planned_end"].strftime("%d.%m. %H:%M"),
-                    item["quantity"], format_piece_equivalent(item["piece_equivalent"]),
-                    f"{item['overtime_seconds'] // 60} min" if item["overtime_seconds"] else "–",
-                )
+        self.render_shift_plan_cards(self.shift_plan_results)
+
+    def render_shift_plan_cards(self, results: list[dict]) -> None:
+        for child in self.plan_cards_frame.winfo_children():
+            child.destroy()
+        if not results:
+            self.plan_total_label.configure(text="Gesamtzeit: –")
+            ttk.Label(
+                self.plan_cards_frame,
+                text="Planpunkte hinzufügen und anschließend die Schicht berechnen.",
+                style="Muted.TLabel",
+            ).pack(anchor="w", pady=10)
+            return
+        first_start = results[0]["planned_start"]
+        last_end = results[-1]["planned_end"]
+        productive_seconds = sum(int(item["productive_seconds"]) for item in results)
+        self.plan_total_label.configure(
+            text=(
+                f"Gesamtablauf {first_start:%H:%M}–{last_end:%H:%M} · "
+                f"{format_duration(int((last_end - first_start).total_seconds()))} Uhrzeit · "
+                f"{format_duration(productive_seconds)} produktive Vorgabezeit"
             )
+        )
+        for index, item in enumerate(results):
+            row = ttk.Frame(self.plan_cards_frame)
+            row.pack(fill="x", pady=4)
+            rail = tk.Canvas(row, width=54, height=78, highlightthickness=0, bg="#f0f0f0")
+            rail.pack(side="left", fill="y")
+            rail.create_oval(9, 8, 45, 44, fill="#2f6fed", outline="")
+            rail.create_text(27, 26, text=str(index + 1), fill="white", font=("Segoe UI", 10, "bold"))
+            if index < len(results) - 1:
+                rail.create_line(27, 44, 27, 78, fill="#2f6fed", width=3)
+            card = ttk.LabelFrame(row, padding=10)
+            card.pack(side="left", fill="x", expand=True)
+            heading = ttk.Frame(card); heading.pack(fill="x")
+            ttk.Label(
+                heading, text=f"{item['order_number']} · {item['die_number']}/{item['operation']}",
+                font=("Segoe UI", 11, "bold"),
+            ).pack(side="left")
+            ttk.Label(
+                heading, text=f"{item['planned_start']:%H:%M}  →  {item['planned_end']:%H:%M}",
+                font=("Segoe UI", 11, "bold"),
+            ).pack(side="right")
+            kind = "Guthaben" if item["kind"] == "credit" else "Bearbeitung"
+            overtime = f" · {item['overtime_seconds'] // 60} Min. Überzeit" if item["overtime_seconds"] else ""
+            ttk.Label(
+                card,
+                text=(
+                    f"{kind} · {item['quantity']} ganze Stück · "
+                    f"{format_piece_equivalent(item['piece_equivalent'])} rechnerisch · "
+                    f"{format_duration(item['productive_seconds'])}{overtime}"
+                ),
+                style="Muted.TLabel",
+            ).pack(anchor="w", pady=(5, 0))
 
     def start_first_shift_plan_item(self) -> None:
         self.calculate_shift_plan(persist=not bool(
@@ -707,6 +827,10 @@ class WerkMateApp(tk.Tk):
                 "value": saved["value"],
                 "label": labels[saved["mode"]],
                 "order": order,
+                "start_override": (
+                    datetime.fromisoformat(saved["start_override"])
+                    if saved.get("start_override") else None
+                ),
             })
         self._set_entry(
             self.plan_start,
