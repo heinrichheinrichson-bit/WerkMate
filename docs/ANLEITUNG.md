@@ -1,4 +1,4 @@
-# WerkMate 0.9.0 – Anleitung
+# WerkMate 0.10.0 – Anleitung
 
 Diese Anleitung beschreibt den aktuellen lokalen PC-Prototyp. Er eignet sich,
 um den vollständigen Arbeitsablauf zu testen. Eine installierbare Android-App
@@ -50,7 +50,10 @@ Benutzerkonto und keine Anmeldung erforderlich.
 6. Klicke auf **Auftrag anlegen**.
 
 Der Auftrag erscheint danach in der Liste. Die Spalte **Offen/Gesamt** zeigt
-beispielsweise `24/24`.
+beispielsweise `24/24`. Während der Eingabe und in der Auftragsliste zeigt
+WerkMate außerdem die Gesamtvorgabezeit in Minuten sowie in Stunden/Minuten:
+
+> 48 Stück × 20 Minuten = 960,0 min (16 h 00 min)
 
 Ist die Gesenknummer bereits im Katalog vorhanden, kann sie aus der Liste
 gewählt werden. WerkMate bietet danach nur die zugehörigen Arbeitsgänge an und
@@ -204,6 +207,9 @@ Der Reiter **Historie** zeigt alle persönlichen Arbeitseinsätze mit:
 - Auftrag, Gesenk und Arbeitsgang
 - gemeldeter An- und Abmeldezeit
 - fertiggemeldeter Stückzahl
+- geplanter und tatsächlich gemeldeter Stückzahl
+- Zeitabweichung in Minuten und Prozent
+- Stückabweichung als Anzahl und Prozent
 - Status
 
 Ein Doppelklick auf einen Eintrag öffnet weitere Details einschließlich
@@ -211,6 +217,23 @@ geplanter Rückmeldezeit und Notiz.
 
 Die Suche findet Auftragsnummern, Gesenknummern, Arbeitsgänge und Notiztexte.
 Zusätzlich kann die Liste nach Meldungsstatus gefiltert werden.
+
+### Bedeutung der Leistungsfarben
+
+Die Auswertung bezieht sich immer auf den einzelnen geplanten Arbeitseinsatz:
+
+- 🔴 **Verzug:** Abmeldung erfolgte nach der geplanten Rückmeldezeit.
+- 🟢 **Früher:** Abmeldung erfolgte vor der geplanten Rückmeldezeit.
+- 🟢 **Mehr Stück:** Mehr Stück gemeldet als für den Einsatz geplant.
+- 🔴 **Weniger Stück:** Weniger Stück gemeldet als für den Einsatz geplant.
+
+Zeit- und Stückergebnis werden bewusst getrennt bewertet. Wer früher abmeldet,
+aber gleichzeitig weniger Stück meldet, erhält deshalb eine grüne Zeitangabe und
+eine rote Stückangabe. Abgebrochene und noch laufende Einsätze werden nicht
+bewertet.
+
+Der Zeitprozentsatz verwendet die Vorgabezeit der geplanten Einsatzmenge als
+Basis. Der Stückprozentsatz verwendet die geplante Stückzahl als Basis.
 
 ## 11. Gespeicherte Aufträge korrigieren
 

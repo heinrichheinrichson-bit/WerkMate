@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.9.0 – Schnellstart mit Minimalangaben und klare Schichtprognose**
+**Version 0.10.0 – Soll-/Ist-Historie und Auftragsgesamtzeiten**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern

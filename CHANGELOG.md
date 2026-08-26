@@ -4,6 +4,20 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.10.0] - 2026-08-26
+
+### Hinzugefügt
+
+- Gesamtvorgabezeit eines Auftrags in Minuten und Stunden/Minuten
+- Live-Berechnung der Gesamtvorgabezeit bei der Auftragseingabe
+- Geplante und tatsächlich gemeldete Stückzahl in der Historie
+- Zeitabweichung gegenüber der geplanten Rückmeldung in Minuten und Prozent
+- Stückabweichung gegenüber der geplanten Einsatzmenge als Anzahl und Prozent
+- Rote Kennzeichnung für Verzug und weniger Stück
+- Grüne Kennzeichnung für frühere Rückmeldung und mehr Stück
+- Neutrale Darstellung bei exakter Erfüllung
+- Keine Leistungswertung für laufende oder abgebrochene Einsätze
+
 ## [0.9.0] - 2026-08-26
 
 ### Hinzugefügt

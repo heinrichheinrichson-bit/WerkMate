@@ -11,6 +11,11 @@ from tkinter import filedialog, messagebox, ttk
 from . import __version__
 from .cli import default_database_path, format_duration, parse_datetime, warn_unusual_end
 from .database import WerkMateDatabase
+from .performance import (
+    calculate_performance,
+    format_quantity_performance,
+    format_time_performance,
+)
 from .service import WerkMateService
 from .timecalc import minutes_to_seconds, seconds_to_minutes
 
@@ -27,6 +32,14 @@ def display_time(value: str | None) -> str:
 
 def format_piece_equivalent(value: Decimal) -> str:
     return str(value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)).replace(".", ",")
+
+
+def format_total_target_time(seconds: int) -> str:
+    total_minutes = Decimal(seconds) / Decimal(60)
+    minute_text = str(total_minutes.quantize(Decimal("0.1"))).replace(".", ",")
+    hours, remainder = divmod(int(seconds), 3_600)
+    minutes = remainder // 60
+    return f"{minute_text} min ({hours} h {minutes:02d} min)"
 
 
 def current_shift_number(at: datetime) -> int:
@@ -166,13 +179,19 @@ class WerkMateApp(tk.Tk):
         ttk.Button(form, text="Auftrag anlegen", command=self.create_order).grid(
             row=3, column=4, sticky="ew", padx=4
         )
+        self.order_total_time = ttk.Label(form, text="Gesamtvorgabezeit: –", style="Muted.TLabel")
+        self.order_total_time.grid(row=4, column=0, columnspan=5, sticky="w", padx=4, pady=(8, 0))
+        self.order_entries[3].bind("<KeyRelease>", lambda _event: self.refresh_order_total_time())
+        self.order_entries[4].bind("<KeyRelease>", lambda _event: self.refresh_order_total_time())
 
         list_frame = ttk.LabelFrame(self.orders_tab, text="Gespeicherte Aufträge", padding=10)
         list_frame.pack(fill="both", expand=True, pady=14)
-        columns = ("id", "order", "die", "operation", "quantity", "time", "status")
+        columns = ("id", "order", "die", "operation", "quantity", "time", "total", "status")
         self.orders_tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=10)
-        headings = ("ID", "Auftrag", "Gesenk", "AG", "Offen/Gesamt", "Vorgabe", "Status")
-        widths = (45, 130, 100, 80, 110, 100, 150)
+        headings = (
+            "ID", "Auftrag", "Gesenk", "AG", "Offen/Gesamt", "Vorgabe", "Gesamtzeit", "Status"
+        )
+        widths = (45, 115, 90, 70, 100, 90, 165, 135)
         for column, heading, width in zip(columns, headings, widths):
             self.orders_tree.heading(column, text=heading)
             self.orders_tree.column(column, width=width, anchor="center")
@@ -389,12 +408,18 @@ class WerkMateApp(tk.Tk):
         self.history_status.pack(side="left", padx=6)
         ttk.Button(filters, text="Filtern", command=self.refresh_history).pack(side="left", padx=6)
         ttk.Button(filters, text="Zurücksetzen", command=self.reset_history_filter).pack(side="left")
-        columns = ("date", "order", "die", "operation", "times", "quantity", "status")
+        columns = (
+            "date", "order", "die", "operation", "times", "quantity",
+            "time_result", "quantity_result", "status",
+        )
         self.history_tree = ttk.Treeview(
             self.history_tab, columns=columns, show="headings", height=18
         )
-        headings = ("Datum", "Auftrag", "Gesenk", "AG", "An-/Abmeldung", "Stück", "Status")
-        widths = (90, 115, 90, 70, 245, 60, 130)
+        headings = (
+            "Datum", "Auftrag", "Gesenk", "AG", "An-/Abmeldung", "Ist/Soll",
+            "Zeitabweichung", "Stückabweichung", "Status",
+        )
+        widths = (80, 105, 70, 50, 145, 65, 205, 175, 100)
         for column, heading, width in zip(columns, headings, widths):
             self.history_tree.heading(column, text=heading)
             self.history_tree.column(column, width=width, anchor="center")
@@ -438,6 +463,7 @@ class WerkMateApp(tk.Tk):
         for entry in self.order_entries:
             entry.delete(0, tk.END)
         self.order_note.delete(0, tk.END)
+        self.refresh_order_total_time()
         self.refresh_orders()
         messagebox.showinfo("Gespeichert", "Der Auftrag wurde lokal angelegt.", parent=self)
 
@@ -457,6 +483,18 @@ class WerkMateApp(tk.Tk):
             return
         self._set_entry(
             self.order_entries[4], str(seconds_to_minutes(standard["seconds_per_piece"]))
+        )
+        self.refresh_order_total_time()
+
+    def refresh_order_total_time(self) -> None:
+        try:
+            quantity = int(self.order_entries[3].get())
+            seconds = quantity * minutes_to_seconds(self.order_entries[4].get())
+        except (ValueError, TypeError):
+            self.order_total_time.configure(text="Gesamtvorgabezeit: –")
+            return
+        self.order_total_time.configure(
+            text=f"Gesamtvorgabezeit des Auftrags: {format_total_target_time(seconds)}"
         )
 
     def save_catalog_standard(self) -> None:
@@ -845,7 +883,11 @@ class WerkMateApp(tk.Tk):
                 "", "end", values=(
                     order["id"], order["order_number"], order["die_number"],
                     order["operation"], f"{order['open_quantity']}/{order['original_quantity']}",
-                    f"{seconds_to_minutes(order['seconds_per_piece'])} min", order["status"],
+                    f"{seconds_to_minutes(order['seconds_per_piece'])} min",
+                    format_total_target_time(
+                        int(order["original_quantity"]) * int(order["seconds_per_piece"])
+                    ),
+                    order["status"],
                 )
             )
 
@@ -933,11 +975,17 @@ class WerkMateApp(tk.Tk):
         ):
             start = display_time(item["reported_started_at"])
             end = display_time(item["reported_ended_at"])
+            performance = calculate_performance(item)
+            actual_quantity = (
+                item["completed_quantity"] if item["completed_quantity"] is not None else "–"
+            )
             self.history_tree.insert(
                 "", "end", iid=str(item["id"]), values=(
                     start[:10], item["order_number"], item["die_number"], item["operation"],
                     f"{start[11:]} – {end[11:] if end != '–' else 'offen'}",
-                    item["completed_quantity"] if item["completed_quantity"] is not None else "–",
+                    f"{actual_quantity}/{item['quantity_to_process']}",
+                    format_time_performance(performance),
+                    format_quantity_performance(performance),
                     item["status"],
                 )
             )
@@ -954,14 +1002,17 @@ class WerkMateApp(tk.Tk):
         session = self.database.get_session(int(selected[0]))
         if session is None:
             return
+        performance = calculate_performance(session)
         messagebox.showinfo(
             "Meldungsdetails",
             f"Auftrag: {session['order_number']}\n"
             f"Gesenk / Arbeitsgang: {session['die_number']} / {session['operation']}\n"
             f"Anmeldung: {display_time(session['reported_started_at'])}\n"
-            f"Soll-Ende: {display_time(session['target_end'])}\n"
+            f"Geplante Rückmeldung: {display_time(session['target_end'])}\n"
             f"Abmeldung: {display_time(session['reported_ended_at'])}\n"
             f"Fertig gemeldet: {session['completed_quantity'] if session['completed_quantity'] is not None else '–'}\n"
+            f"Zeitabweichung: {format_time_performance(performance)}\n"
+            f"Stückabweichung: {format_quantity_performance(performance)}\n"
             f"Notiz: {session['note'] or '–'}",
             parent=self,
         )
