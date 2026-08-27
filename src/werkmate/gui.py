@@ -95,6 +95,7 @@ class WerkMateApp(tk.Tk):
         self.database = WerkMateDatabase(database_path or default_database_path())
         self.service = WerkMateService(self.database)
         self.notified_session_id: int | None = None
+        self.overdue_reminder_at: datetime | None = None
 
         self._configure_style()
         self._build_ui()
@@ -109,6 +110,8 @@ class WerkMateApp(tk.Tk):
         style.configure("Title.TLabel", font=("Segoe UI", 18, "bold"))
         style.configure("Countdown.TLabel", font=("Segoe UI", 34, "bold"))
         style.configure("Danger.TLabel", font=("Segoe UI", 34, "bold"), foreground="#b42318")
+        style.configure("Alert.TLabel", font=("Segoe UI", 12, "bold"), foreground="#b42318")
+        style.configure("Danger.Horizontal.TProgressbar", background="#b42318")
         style.configure("Muted.TLabel", foreground="#667085")
         style.configure("Primary.TButton", font=("Segoe UI", 11, "bold"), padding=8)
 
@@ -174,6 +177,13 @@ class WerkMateApp(tk.Tk):
         self.countdown.pack(pady=(4, 18))
         self.work_progress = ttk.Progressbar(self.dashboard_tab, maximum=100, mode="determinate")
         self.work_progress.pack(fill="x", padx=80, pady=(0, 10))
+        self.overdue_banner = ttk.Label(self.dashboard_tab, text="", style="Alert.TLabel")
+        self.overdue_banner.pack()
+        self.overdue_reminder_button = ttk.Button(
+            self.dashboard_tab, text="Erneut in 3 Minuten erinnern",
+            command=self.schedule_overdue_reminder, state="disabled",
+        )
+        self.overdue_reminder_button.pack(pady=(5, 0))
         self.target_label = ttk.Label(self.dashboard_tab, text="")
         self.target_label.pack()
         self.extend_work_button = ttk.Button(
@@ -1955,6 +1965,8 @@ class WerkMateApp(tk.Tk):
         self._show_finished_and_offer_next(
             "Rückmeldung gespeichert",
             "Bearbeitete und betrieblich rückgemeldete Stück wurden getrennt gespeichert.",
+            finished_session=session,
+            reported_end=reported_end,
         )
 
     def finish_entire_order(self) -> None:
@@ -2012,21 +2024,94 @@ class WerkMateApp(tk.Tk):
             "Auftrag vollständig beendet",
             f"Alle {completed} noch offenen Stück wurden als bearbeitet gespeichert. "
             f"Heute rückgemeldet: {reported_quantity} Stück.",
+            finished_session=session,
+            reported_end=reported_end,
         )
 
-    def _show_finished_and_offer_next(self, title: str, message: str) -> None:
-        if self.shift_plan_items:
-            next_item = self.shift_plan_results[0] if self.shift_plan_results else None
-            next_text = (
-                f"\n\nNächster Planpunkt: {next_item['order_number']} ab "
-                f"{next_item['planned_start']:%H:%M}.\nDiesen Auftrag jetzt verbindlich anmelden und starten?"
-                if next_item else "\n\nIm Schichtplan ist noch ein weiterer Auftrag vorgemerkt."
-            )
-            if messagebox.askyesno(title, message + next_text, parent=self):
-                self.tabs.select(self.plan_tab)
-                self.start_first_shift_plan_item()
+    def _show_finished_and_offer_next(
+        self, title: str, message: str, *, finished_session: dict,
+        reported_end: datetime,
+    ) -> None:
+        if not self.shift_plan_items:
+            messagebox.showinfo(title, message, parent=self)
             return
-        messagebox.showinfo(title, message, parent=self)
+        next_item = self.shift_plan_results[0] if self.shift_plan_results else None
+        if next_item is None:
+            messagebox.showinfo(title, message, parent=self)
+            return
+
+        dialog = tk.Toplevel(self)
+        dialog.title("Auftragswechsel")
+        dialog.transient(self); dialog.grab_set(); dialog.resizable(False, False)
+        body = ttk.Frame(dialog, padding=18); body.pack(fill="both", expand=True)
+        ttk.Label(body, text=title, style="Title.TLabel").grid(
+            row=0, column=0, columnspan=3, sticky="w"
+        )
+        ttk.Label(body, text=message, wraplength=620, justify="left").grid(
+            row=1, column=0, columnspan=3, sticky="w", pady=(5, 14)
+        )
+        planned_end = datetime.fromisoformat(finished_session["target_end"])
+        delta_seconds = int((reported_end - planned_end).total_seconds())
+        if delta_seconds > 0:
+            delta_text = f"{format_duration(delta_seconds)} später als geplant"
+        elif delta_seconds < 0:
+            delta_text = f"{format_duration(abs(delta_seconds))} früher als geplant"
+        else:
+            delta_text = "genau zur geplanten Zeit"
+        summary = ttk.LabelFrame(body, text="Abgeschlossener Einsatz", padding=10)
+        summary.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(0, 12))
+        ttk.Label(
+            summary,
+            text=(
+                f"{finished_session['order_number']} · {finished_session['die_number']}/"
+                f"{finished_session['operation']}"
+            ),
+            font=("Segoe UI", 11, "bold"),
+        ).pack(anchor="w")
+        ttk.Label(
+            summary,
+            text=(
+                f"Geplant bis {planned_end:%H:%M} · rückgemeldet um {reported_end:%H:%M} · "
+                f"{delta_text}"
+            ),
+            style="Muted.TLabel",
+        ).pack(anchor="w", pady=(4, 0))
+
+        next_frame = ttk.LabelFrame(body, text="Nächster geplanter Auftrag", padding=12)
+        next_frame.grid(row=3, column=0, columnspan=3, sticky="ew")
+        ttk.Label(
+            next_frame,
+            text=f"{next_item['order_number']} · Ges. {next_item['die_number']} · {next_item['operation']}",
+            font=("Segoe UI", 13, "bold"),
+        ).pack(anchor="w")
+        ttk.Label(
+            next_frame,
+            text=(
+                f"Aktualisierter Start {next_item['planned_start']:%H:%M} · "
+                f"geplantes Ende {next_item['planned_end']:%H:%M} · "
+                f"{next_item['quantity']} Stück"
+            ),
+        ).pack(anchor="w", pady=(5, 0))
+        ttk.Label(
+            next_frame,
+            text="Dieser Auftrag startet ausschließlich nach deiner Bestätigung.",
+            style="Alert.TLabel",
+        ).pack(anchor="w", pady=(8, 0))
+
+        actions = ttk.Frame(body); actions.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(16, 0))
+        ttk.Button(
+            actions, text="Noch nicht starten", command=dialog.destroy
+        ).pack(side="left")
+
+        def start_next() -> None:
+            dialog.destroy()
+            self.tabs.select(self.plan_tab)
+            self.start_first_shift_plan_item()
+
+        ttk.Button(
+            actions, text="NÄCHSTEN AUFTRAG JETZT STARTEN",
+            style="Primary.TButton", command=start_next,
+        ).pack(side="right", padx=(12, 0))
 
     def cancel_active(self) -> None:
         session = self.database.active_session()
@@ -2081,6 +2166,7 @@ class WerkMateApp(tk.Tk):
             except ValueError as error:
                 messagebox.showerror("Endzeit nicht geändert", str(error), parent=dialog); return
             self.notified_session_id = None
+            self.overdue_reminder_at = None
             dialog.destroy()
             self.load_persisted_shift_plan()
             self.refresh_all()
@@ -2232,6 +2318,10 @@ class WerkMateApp(tk.Tk):
             self.countdown.configure(text="--:--:--", style="Countdown.TLabel")
             self.target_label.configure(text="")
             self.work_progress.configure(value=0)
+            self.work_progress.configure(style="Horizontal.TProgressbar")
+            self.overdue_banner.configure(text="")
+            self.overdue_reminder_button.configure(state="disabled")
+            self.overdue_reminder_at = None
             self.dashboard_start_value.configure(text="–")
             self.dashboard_end_value.configure(text="–")
             self.dashboard_progress_value.configure(text="0 %")
@@ -2279,6 +2369,22 @@ class WerkMateApp(tk.Tk):
             text=("+" if overdue else "") + format_duration(status["time_seconds"]),
             style="Danger.TLabel" if overdue else "Countdown.TLabel",
         )
+        self.work_progress.configure(
+            style="Danger.Horizontal.TProgressbar" if overdue else "Horizontal.TProgressbar"
+        )
+        self.overdue_banner.configure(
+            text=(
+                (
+                    f"⚠ SOLLZEIT ERREICHT – erneuter Alarm um {self.overdue_reminder_at:%H:%M}. "
+                    "Der Auftrag läuft weiter."
+                    if self.overdue_reminder_at is not None else
+                    "⚠ SOLLZEIT ERREICHT – Auftrag rückmelden oder bewusst verlängern. "
+                    "Der nächste Auftrag startet nicht automatisch."
+                )
+                if overdue else ""
+            )
+        )
+        self.overdue_reminder_button.configure(state="normal" if overdue else "disabled")
         started = datetime.fromisoformat(status["reported_started_at"])
         target = datetime.fromisoformat(status["target_end"])
         total_clock_seconds = max((target - started).total_seconds(), 1)
@@ -2334,8 +2440,13 @@ class WerkMateApp(tk.Tk):
                 f"Davon außerhalb der aktuellen Schichtkapazität: {extra}"
             )
         self._render_dashboard_timeline(status)
-        if overdue and self.notified_session_id != status["id"]:
+        reminder_due = (
+            self.overdue_reminder_at is not None
+            and datetime.now().astimezone().replace(tzinfo=None) >= self.overdue_reminder_at
+        )
+        if overdue and (self.notified_session_id != status["id"] or reminder_due):
             self.notified_session_id = int(status["id"])
+            self.overdue_reminder_at = None
             self.bell()
             messagebox.showwarning(
                 "Geplante Rückmeldezeit erreicht",
@@ -2343,6 +2454,16 @@ class WerkMateApp(tk.Tk):
                 "Bitte Stückzahl rückmelden oder die Überziehung weiterlaufen lassen.",
                 parent=self,
             )
+
+    def schedule_overdue_reminder(self) -> None:
+        if self.database.active_session() is None:
+            return
+        self.overdue_reminder_at = datetime.now().astimezone().replace(tzinfo=None) + timedelta(
+            minutes=3
+        )
+        self.overdue_banner.configure(
+            text=f"Erneuter Alarm um {self.overdue_reminder_at:%H:%M}. Auftrag läuft weiter."
+        )
 
     def refresh_history(self) -> None:
         self.history_tree.delete(*self.history_tree.get_children())

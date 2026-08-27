@@ -4,6 +4,29 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.28.0] - 2026-08-27
+
+### Neu
+
+- Eigener Wechselbildschirm nach Rückmeldung des aktuellen Auftrags
+- Zusammenfassung von geplantem und tatsächlichem Ende sowie Zeitabweichung
+- Nächster Auftrag mit aktualisiertem Start, Ende und Stückzahl
+- Getrennte Entscheidungen „Noch nicht starten“ und „Nächsten Auftrag jetzt starten“
+- Sichtbarer roter Alarmzustand nach Ablauf der Sollzeit
+- Roter Fortschrittsbalken bei überfälliger Rückmeldung
+- Erneute akustische Erinnerung nach drei Minuten frei auslösbar
+
+### Sicherheit
+
+- Ein Folgeauftrag startet niemals allein durch Countdown, Alarm oder Rückmeldung
+- Erst der ausdrückliche Klick im Wechselbildschirm startet den nächsten Countdown
+- Verlängerung setzt Alarm und Wiederholung auf die neue Endzeit zurück
+
+### Qualität
+
+- GUI-Test beweist: nach Rückmeldung kein aktiver Auftrag bis zur manuellen Bestätigung
+- GUI-Test beweist: Alarmzustand löst keinen Auftragswechsel aus
+
 ## [0.27.0] - 2026-08-27
 
 ### Neu
