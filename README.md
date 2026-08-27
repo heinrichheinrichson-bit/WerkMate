@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.29.0 – moderner, touchfreundlicher Tagesmonitor**
+**Version 0.30.0 – moderner Schichtplan als Tageszeitleiste**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern

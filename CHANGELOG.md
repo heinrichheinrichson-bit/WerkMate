@@ -4,6 +4,33 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.30.0] - 2026-08-27
+
+### Schichtplanung
+
+- Technische Reihenfolgentabelle durch direkt bedienbare Auftragskarten ersetzt
+- Jede Karte zeigt geplanten Start, geplantes Ende, Stückzahl, Stückzeit, Dauer und Restmenge
+- Scrollbare Tageszeitleiste für beliebig viele geplante Arbeiten
+- Reihenfolge direkt per Ziehgriff oder weiterhin über Pfeiltasten änderbar
+- Bearbeiten, Duplizieren und Entfernen unmittelbar am jeweiligen Auftrag
+- Startzeit des ersten Auftrags und optionales längeres Schichtende klarer benannt
+- Normales Schichtende bleibt automatisch; zusätzliche Arbeitszeit wird nur bewusst eingetragen
+- Manueller Auftrag und noch nicht gespeicherter Auftrag teilen denselben Eingabedialog
+- Stückzeit wird bei einer eindeutigen Gesenk-/Arbeitsgang-Kombination aus dem Katalog übernommen
+- Planung wird nach Ergänzen, Bearbeiten, Duplizieren, Entfernen oder Umordnen neu berechnet
+
+### Klarheit und Sicherheit
+
+- Dauerhaft sichtbarer Hinweis, dass Folgezeiten nur geplant sind
+- Startknopf ausdrücklich als manueller Start des ersten Auftrags bezeichnet
+- Kein Auftrag startet durch Berechnung, Umordnung oder Ablauf einer geplanten Zeit automatisch
+
+### Qualität
+
+- GUI-Prüfung der Zeitkette `05:45 → 06:45 → 06:45`
+- GUI-Prüfung der Drag-and-drop-Neuberechnung mit mehreren Aufträgen
+- Alle 83 automatisierten Tests bestanden
+
 ## [0.29.0] - 2026-08-27
 
 ### Oberfläche

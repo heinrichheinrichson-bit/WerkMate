@@ -600,12 +600,17 @@ class WerkMateApp(tk.Tk):
         self.shift_plan_items: list[dict] = []
         self.shift_plan_results: list[dict] = []
         self._plan_date = local_now().date()
-        ttk.Label(self.plan_tab, text="Aufträge und Guthaben zusammen planen", style="Title.TLabel").pack(
+        ttk.Label(self.plan_tab, text="Meinen Arbeitstag planen", style="Title.TLabel").pack(
             anchor="w"
         )
-        settings = ttk.Frame(self.plan_tab)
-        settings.pack(fill="x", pady=(12, 8))
-        ttk.Label(settings, text="Planstart (Uhrzeit):").pack(side="left")
+        ttk.Label(
+            self.plan_tab,
+            text="Aufträge in die gewünschte Reihenfolge bringen – WerkMate berechnet Start, Ende und freie Schichtzeit.",
+            style="Muted.TLabel",
+        ).pack(anchor="w", pady=(3, 12))
+        settings = ttk.LabelFrame(self.plan_tab, text="SCHICHT", padding=12)
+        settings.pack(fill="x", pady=(0, 10))
+        ttk.Label(settings, text="Beginn des ersten Auftrags:", style="Section.TLabel").pack(side="left")
         self.plan_start = ttk.Entry(settings, width=20)
         self.plan_start.insert(0, local_now().strftime("%H:%M"))
         self.plan_start.pack(side="left", padx=(6, 16))
@@ -613,20 +618,25 @@ class WerkMateApp(tk.Tk):
         self.plan_shift = ttk.Combobox(settings, values=("1", "2", "3"), state="readonly", width=6)
         self.plan_shift.set(str(self._current_shift_number(local_now())))
         self.plan_shift.pack(side="left", padx=6)
-        ttk.Label(settings, text="Heutiges Schichtende (optional):").pack(side="left", padx=(14, 0))
+        ttk.Label(settings, text="Länger arbeiten bis (optional):").pack(side="left", padx=(14, 0))
         self.plan_custom_end = ttk.Entry(settings, width=8)
         self.plan_custom_end.pack(side="left", padx=6)
-        ttk.Label(settings, text="leer = normale Schicht", style="Muted.TLabel").pack(side="left")
-        ttk.Label(
+        ttk.Label(settings, text="nur HH:MM · leer = normales Schichtende", style="Muted.TLabel").pack(side="left")
+        self.plan_start.bind("<Return>", self._plan_setting_changed)
+        self.plan_custom_end.bind("<Return>", self._plan_setting_changed)
+        self.plan_shift.bind("<<ComboboxSelected>>", self._plan_setting_changed)
+        plan_notice = ttk.Label(
             self.plan_tab,
             text=(
-                "Der Planstart gilt für den ersten Auftrag. Alle weiteren Startzeiten werden "
-                "automatisch aus dem Ende des vorherigen Auftrags berechnet."
+                "Wichtig: Die angezeigten Folgezeiten sind eine Planung. Nach jedem Auftrag ist eine "
+                "Rückmeldung nötig – der nächste Auftrag startet niemals automatisch."
             ),
-            style="Muted.TLabel",
-        ).pack(anchor="w", pady=(0, 8))
+            style="Alert.TLabel",
+            wraplength=1040,
+        )
+        plan_notice.pack(anchor="w", pady=(0, 10))
 
-        add = ttk.LabelFrame(self.plan_tab, text="Planpunkt hinzufügen", padding=10)
+        add = ttk.LabelFrame(self.plan_tab, text="AUFTRAG HINZUFÜGEN", padding=10)
         add.pack(fill="x")
         ttk.Label(add, text="Auftrag:").grid(row=0, column=0, sticky="w")
         self.plan_order = ttk.Combobox(add, state="readonly", width=42)
@@ -652,19 +662,20 @@ class WerkMateApp(tk.Tk):
         self.plan_value = ttk.Entry(add, width=15)
         self.plan_value.grid(row=1, column=2, sticky="ew", padx=8)
         self.plan_mode.bind("<<ComboboxSelected>>", self._update_plan_value_label)
-        ttk.Button(add, text="Zum Plan hinzufügen", command=self.add_shift_plan_item).grid(
+        ttk.Button(add, text="AUFTRAG HINZUFÜGEN", style="Touch.TButton", command=self.add_shift_plan_item).grid(
             row=1, column=3, sticky="ew", padx=(8, 0)
         )
         ttk.Button(
-            add, text="Manuellen Auftrag eintragen", command=self.add_manual_shift_plan_item
+            add, text="＋ Neuen oder noch nicht gespeicherten Auftrag eintragen",
+            command=self.add_manual_shift_plan_item
         ).grid(row=2, column=0, columnspan=4, sticky="ew", pady=(10, 0))
         add.columnconfigure(0, weight=2)
         add.columnconfigure(1, weight=1)
 
-        queue_frame = ttk.LabelFrame(self.plan_tab, text="Reihenfolge", padding=8)
-        queue_frame.pack(fill="x", pady=10)
+        # Unsichtbare Kompatibilitätsliste: Die sichtbare Bedienung erfolgt direkt
+        # über die großen Karten im berechneten Ablauf.
         self.plan_queue = ttk.Treeview(
-            queue_frame,
+            self.plan_tab,
             columns=("pos", "order", "die", "mode", "value", "start"),
             show="headings",
             height=5,
@@ -676,52 +687,63 @@ class WerkMateApp(tk.Tk):
         ):
             self.plan_queue.heading(column, text=heading)
             self.plan_queue.column(column, width=width, anchor="center")
-        self.plan_queue.pack(fill="x")
         self._plan_drag_source: int | None = None
         self.plan_queue.bind("<ButtonPress-1>", self._plan_drag_start)
         self.plan_queue.bind("<ButtonRelease-1>", self._plan_drag_release)
-        queue_buttons = ttk.Frame(queue_frame)
-        queue_buttons.pack(fill="x", pady=(6, 0))
-        ttk.Button(queue_buttons, text="Ausgewählten entfernen", command=self.remove_shift_plan_item).pack(
-            side="left"
-        )
-        ttk.Button(
-            queue_buttons, text="Startzeit bearbeiten", command=self.edit_plan_item_start
-        ).pack(side="left", padx=6)
-        ttk.Button(
-            queue_buttons, text="Planpunkt bearbeiten", command=self.edit_shift_plan_item
-        ).pack(side="left", padx=(0, 6))
-        ttk.Button(queue_buttons, text="▲", width=4, command=lambda: self.move_plan_item(-1)).pack(
-            side="left"
-        )
-        ttk.Button(queue_buttons, text="▼", width=4, command=lambda: self.move_plan_item(1)).pack(
-            side="left", padx=(3, 6)
-        )
-        ttk.Button(queue_buttons, text="Plan leeren", command=self.clear_shift_plan).pack(
-            side="left", padx=6
-        )
-        self.plan_saved_label = ttk.Label(queue_buttons, text="", style="Muted.TLabel")
-        self.plan_saved_label.pack(side="left", padx=8)
-        ttk.Button(
-            queue_buttons, text="SCHICHT BERECHNEN", style="Primary.TButton",
-            command=self.calculate_shift_plan,
-        ).pack(side="right")
 
-        result_frame = ttk.LabelFrame(self.plan_tab, text="Berechneter Ablauf", padding=8)
-        result_frame.pack(fill="both", expand=True)
+        result_frame = ttk.LabelFrame(self.plan_tab, text="GEPLANTER TAGESABLAUF", padding=10)
+        result_frame.pack(fill="both", expand=True, pady=(10, 0))
+        result_actions = ttk.Frame(result_frame)
+        result_actions.pack(fill="x", pady=(0, 8))
+        ttk.Label(
+            result_actions, text="Reihenfolge per Ziehgriff oder mit den Pfeilen ändern.",
+            style="Muted.TLabel",
+        ).pack(side="left")
+        self.plan_saved_label = ttk.Label(result_actions, text="", style="Muted.TLabel")
+        self.plan_saved_label.pack(side="left", padx=12)
+        ttk.Button(result_actions, text="Plan leeren", command=self.clear_shift_plan).pack(side="right")
+        ttk.Button(
+            result_actions, text="Neu berechnen", command=self.calculate_shift_plan,
+        ).pack(side="right", padx=(0, 6))
         self.plan_total_label = ttk.Label(
-            result_frame, text="Gesamtzeit: –", font=("Segoe UI", 12, "bold")
+            result_frame, text="Gesamtzeit: –", font=("Segoe UI", 12, "bold"), wraplength=1040
         )
         self.plan_total_label.pack(anchor="w", pady=(0, 8))
         self.plan_capacity_bar = ttk.Progressbar(result_frame, maximum=100, mode="determinate")
         self.plan_capacity_bar.pack(fill="x", pady=(0, 6))
         self.plan_status_label = ttk.Label(result_frame, text="Noch kein Ablauf berechnet.")
         self.plan_status_label.pack(anchor="w", pady=(0, 8))
-        self.plan_cards_frame = ttk.Frame(result_frame)
-        self.plan_cards_frame.pack(fill="both", expand=True)
+        cards_shell = ttk.Frame(result_frame)
+        cards_shell.pack(fill="both", expand=True)
+        self.plan_cards_canvas = tk.Canvas(
+            cards_shell, height=250, highlightthickness=0, borderwidth=0, background="#f4f6f8"
+        )
+        cards_scroll = ttk.Scrollbar(
+            cards_shell, orient="vertical", command=self.plan_cards_canvas.yview
+        )
+        self.plan_cards_canvas.configure(yscrollcommand=cards_scroll.set)
+        cards_scroll.pack(side="right", fill="y")
+        self.plan_cards_canvas.pack(side="left", fill="both", expand=True)
+        self.plan_cards_frame = ttk.Frame(self.plan_cards_canvas)
+        self._plan_cards_window = self.plan_cards_canvas.create_window(
+            (0, 0), window=self.plan_cards_frame, anchor="nw"
+        )
+        self.plan_cards_frame.bind(
+            "<Configure>",
+            lambda _event: self.plan_cards_canvas.configure(
+                scrollregion=self.plan_cards_canvas.bbox("all")
+            ),
+        )
+        self.plan_cards_canvas.bind(
+            "<Configure>",
+            lambda event: self.plan_cards_canvas.itemconfigure(
+                self._plan_cards_window, width=event.width
+            ),
+        )
+        self._plan_card_widgets: list[ttk.Frame] = []
         self.plan_start_button = ttk.Button(
             result_frame,
-            text="Ersten Planpunkt starten",
+            text="ERSTEN AUFTRAG MANUELL STARTEN",
             style="Primary.TButton",
             command=self.start_first_shift_plan_item,
         )
@@ -729,6 +751,10 @@ class WerkMateApp(tk.Tk):
 
     def _parsed_plan_start(self) -> datetime:
         return parse_plan_start(self.plan_start.get(), self._plan_date)
+
+    def _plan_setting_changed(self, _event=None) -> None:
+        if self.shift_plan_items:
+            self.calculate_shift_plan()
 
     def _update_plan_value_label(self, _event=None) -> None:
         labels = {
@@ -1112,6 +1138,7 @@ class WerkMateApp(tk.Tk):
     def render_shift_plan_cards(self, results: list[dict]) -> None:
         for child in self.plan_cards_frame.winfo_children():
             child.destroy()
+        self._plan_card_widgets = []
         if not results:
             self.plan_total_label.configure(text="Gesamtzeit: –")
             self.plan_capacity_bar["value"] = 0
@@ -1163,15 +1190,23 @@ class WerkMateApp(tk.Tk):
         for index, item in enumerate(results):
             row = ttk.Frame(self.plan_cards_frame)
             row.pack(fill="x", pady=4)
-            rail = tk.Canvas(row, width=54, height=78, highlightthickness=0, bg="#f0f0f0")
+            self._plan_card_widgets.append(row)
+            rail = tk.Canvas(row, width=58, height=100, highlightthickness=0, bg="#f4f6f8")
             rail.pack(side="left", fill="y")
             rail.create_oval(9, 8, 45, 44, fill="#2f6fed", outline="")
             rail.create_text(27, 26, text=str(index + 1), fill="white", font=("Segoe UI", 10, "bold"))
             if index < len(results) - 1:
-                rail.create_line(27, 44, 27, 78, fill="#2f6fed", width=3)
+                rail.create_line(27, 44, 27, 100, fill="#98a2b3", width=3)
             card = ttk.LabelFrame(row, padding=10)
             card.pack(side="left", fill="x", expand=True)
             heading = ttk.Frame(card); heading.pack(fill="x")
+            handle = ttk.Label(
+                heading, text="↕  ZIEHEN", foreground="#667085", cursor="fleur",
+                font=("Segoe UI", 9, "bold"),
+            )
+            handle.pack(side="left", padx=(0, 12))
+            handle.bind("<ButtonPress-1>", lambda event, i=index: self._plan_card_drag_start(event, i))
+            handle.bind("<ButtonRelease-1>", self._plan_card_drag_release)
             ttk.Label(
                 heading, text=f"{item['order_number']} · {item['die_number']}/{item['operation']}",
                 font=("Segoe UI", 11, "bold"),
@@ -1186,15 +1221,27 @@ class WerkMateApp(tk.Tk):
                 f" · danach {item['remaining_after_plan']} Stück offen"
                 if item["kind"] == "work" else ""
             )
+            piece_minutes = seconds_to_minutes(
+                int(self.shift_plan_items[index]["order"]["seconds_per_piece"])
+            )
             ttk.Label(
                 card,
                 text=(
                     f"{kind} · {item['quantity']} ganze Stück · "
                     f"{format_piece_equivalent(item['piece_equivalent'])} rechnerisch · "
-                    f"{format_duration(item['productive_seconds'])}{remaining}{overtime}"
+                    f"{piece_minutes} min/Stück · {format_duration(item['productive_seconds'])} Dauer"
+                    f"{remaining}{overtime}"
                 ),
                 style="Muted.TLabel",
             ).pack(anchor="w", pady=(5, 0))
+            ttk.Label(
+                card,
+                text=(
+                    f"Geplanter Start {item['planned_start']:%H:%M} · "
+                    f"geplantes Ende {item['planned_end']:%H:%M} · startet erst nach deiner Bestätigung"
+                ),
+                foreground="#175cd3",
+            ).pack(anchor="w", pady=(4, 0))
             actions = ttk.Frame(card); actions.pack(fill="x", pady=(7, 0))
             ttk.Button(
                 actions, text="Bearbeiten", command=lambda i=index: self.edit_shift_plan_item(i)
@@ -1213,6 +1260,27 @@ class WerkMateApp(tk.Tk):
             ttk.Button(
                 actions, text="Entfernen", command=lambda i=index: self.remove_shift_plan_item(i)
             ).pack(side="right")
+
+    def _plan_card_drag_start(self, _event, index: int) -> None:
+        self._plan_drag_source = index
+
+    def _plan_card_drag_release(self, event) -> None:
+        source = self._plan_drag_source
+        self._plan_drag_source = None
+        if source is None or not self._plan_card_widgets:
+            return
+        target = len(self._plan_card_widgets) - 1
+        for index, row in enumerate(self._plan_card_widgets):
+            midpoint = row.winfo_rooty() + row.winfo_height() / 2
+            if event.y_root < midpoint:
+                target = index
+                break
+        if source == target:
+            return
+        item = self.shift_plan_items.pop(source)
+        self.shift_plan_items.insert(target, item)
+        self.refresh_shift_plan_queue()
+        self._refresh_plan_after_change()
 
     def start_first_shift_plan_item(self) -> None:
         self.calculate_shift_plan(persist=not bool(
