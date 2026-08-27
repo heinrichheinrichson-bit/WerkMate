@@ -485,6 +485,14 @@ class WerkMateApp(tk.Tk):
         self.plan_custom_end = ttk.Entry(settings, width=8)
         self.plan_custom_end.pack(side="left", padx=6)
         ttk.Label(settings, text="leer = normale Schicht", style="Muted.TLabel").pack(side="left")
+        ttk.Label(
+            self.plan_tab,
+            text=(
+                "Der Planstart gilt für den ersten Auftrag. Alle weiteren Startzeiten werden "
+                "automatisch aus dem Ende des vorherigen Auftrags berechnet."
+            ),
+            style="Muted.TLabel",
+        ).pack(anchor="w", pady=(0, 8))
 
         add = ttk.LabelFrame(self.plan_tab, text="Planpunkt hinzufügen", padding=10)
         add.pack(fill="x")
@@ -639,6 +647,7 @@ class WerkMateApp(tk.Tk):
             "label": self.plan_mode.get(), "order": order,
         })
         self.refresh_shift_plan_queue()
+        self.calculate_shift_plan()
 
     def add_manual_shift_plan_item(self) -> None:
         dialog = tk.Toplevel(self)
@@ -648,7 +657,7 @@ class WerkMateApp(tk.Tk):
         fields = (
             ("Auftragsnummer (optional)", ""), ("Gesenknummer", "MANUELL"),
             ("Arbeitsgang", "MANUELL"), ("Stückzahl", ""),
-            ("min/Stück", ""), ("Eigene Startzeit (optional)", ""), ("Notiz", ""),
+            ("min/Stück", ""), ("Abweichende Startzeit (meist leer)", ""), ("Notiz", ""),
         )
         entries = []
         for row, (label, value) in enumerate(fields):
@@ -657,6 +666,11 @@ class WerkMateApp(tk.Tk):
             entry.grid(row=row, column=1, padx=(12, 0), pady=5); entries.append(entry)
         catalog_hint = ttk.Label(body, text="", style="Muted.TLabel")
         catalog_hint.grid(row=7, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        ttk.Label(
+            body,
+            text="Leer lassen: Start folgt automatisch auf den vorherigen Auftrag.",
+            style="Muted.TLabel",
+        ).grid(row=8, column=0, columnspan=2, sticky="w", pady=(2, 4))
 
         def apply_catalog_time(_event=None) -> None:
             die = entries[1].get().strip()
@@ -687,7 +701,7 @@ class WerkMateApp(tk.Tk):
         save_order = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             body, text="Zusätzlich dauerhaft unter Aufträge speichern", variable=save_order
-        ).grid(row=8, column=0, columnspan=2, sticky="w", pady=(8, 4))
+        ).grid(row=9, column=0, columnspan=2, sticky="w", pady=(8, 4))
 
         def add() -> None:
             try:
@@ -703,7 +717,7 @@ class WerkMateApp(tk.Tk):
                     raise ValueError("Die Stückzahl muss größer als null sein.")
                 plan_start = self._parsed_plan_start()
                 start_override = parse_plan_start_override(entries[5].get(), plan_start) if entries[5].get().strip() else None
-                number = entries[0].get().strip() or f"PLAN-{datetime.now():%Y%m%d-%H%M%S}"
+                number = entries[0].get().strip() or f"PLAN-{datetime.now():%Y%m%d-%H%M%S-%f}"
                 if self.database.find_order(number) is not None:
                     raise ValueError("Diese Auftragsnummer ist bereits vorhanden.")
                 order_id = self.database.create_order(
@@ -724,10 +738,15 @@ class WerkMateApp(tk.Tk):
             except (ValueError, TypeError) as error:
                 messagebox.showerror("Planauftrag nicht angelegt", str(error), parent=dialog); return
             dialog.destroy(); self.refresh_shift_plan_queue(); self.refresh_plan_orders()
+            self.calculate_shift_plan()
 
-        ttk.Button(body, text="ZUM SCHICHTABLAUF HINZUFÜGEN", style="Primary.TButton", command=add).grid(
-            row=9, column=0, columnspan=2, sticky="ew", pady=(10, 0)
-        )
+        actions = ttk.Frame(body)
+        actions.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        ttk.Button(actions, text="Abbrechen", command=dialog.destroy).pack(side="left")
+        ttk.Button(
+            actions, text="ZUM SCHICHTABLAUF HINZUFÜGEN",
+            style="Primary.TButton", command=add,
+        ).pack(side="right", fill="x", expand=True, padx=(10, 0))
 
     def edit_plan_item_start(self) -> None:
         selected = self.plan_queue.selection()

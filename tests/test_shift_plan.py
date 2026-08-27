@@ -112,6 +112,29 @@ def test_capped_small_order_leaves_capacity_for_following_order(tmp_path) -> Non
     assert plan[1]["remaining_after_plan"] == 26
 
 
+def test_following_order_starts_exactly_when_first_one_ends(tmp_path) -> None:
+    database = WerkMateDatabase(tmp_path / "db.sqlite3")
+    service = WerkMateService(database)
+    first = service.create_order(
+        order_number="ZEHN", die_number="2210", operation="FP",
+        original_quantity=10, seconds_per_piece=6 * 60,
+    )
+    second = service.create_order(
+        order_number="DANACH", die_number="4261", operation="FP",
+        original_quantity=10, seconds_per_piece=15 * 60,
+    )
+    plan = service.plan_sequence(
+        items=[
+            {"order_id": first, "mode": "work_capped", "value": 10},
+            {"order_id": second, "mode": "work_capped", "value": 10},
+        ],
+        reported_start=datetime(2026, 8, 27, 5, 45), shift_number=1,
+    )
+    assert plan[0]["planned_start"] == datetime(2026, 8, 27, 5, 45)
+    assert plan[0]["planned_end"] == datetime(2026, 8, 27, 6, 45)
+    assert plan[1]["planned_start"] == datetime(2026, 8, 27, 6, 45)
+
+
 def test_credit_block_can_precede_new_work(tmp_path) -> None:
     database = WerkMateDatabase(tmp_path / "db.sqlite3")
     service = WerkMateService(database)

@@ -4,6 +4,22 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.25.1] - 2026-08-27
+
+### Verbessert
+
+- Planbeginn wird einmal zentral eingetragen und gilt für den ersten Auftrag
+- Folgeaufträge erhalten automatisch die Endzeit des vorherigen Auftrags als Startzeit
+- Schichtablauf wird nach jedem hinzugefügten Auftrag sofort neu berechnet und angezeigt
+- Abweichende Einzelstartzeit ist deutlicher als seltene Ausnahme gekennzeichnet
+- Manueller Planauftrag besitzt eine sichtbare Abbrechen-Schaltfläche
+- Erklärung des automatischen Zeitablaufs direkt oberhalb der Planpunkte
+- Eindeutige temporäre Auftragsnummern auch bei sehr schnell hintereinander angelegten Planpunkten
+
+### Qualität
+
+- Fach- und GUI-Test für 10 Stück à 6 Minuten: `05:45–06:45`, Folgeauftrag ab `06:45`
+
 ## [0.25.0] - 2026-08-27
 
 ### Neu
