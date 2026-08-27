@@ -1,5 +1,8 @@
 # WerkMate
 
+> Branch `simple-restart`: WerkMate startet hier als bewusst kleiner
+> Schichtrechner. Siehe [WerkMate Simple](docs/SIMPLE-RESTART.md).
+
 WerkMate ist ein lokaler, persönlicher Assistent für Aufträge, Schichten und
 Vorgabezeiten. Er berechnet Soll-Endzeiten, feste verrechenbare Pausen,
 Reststücke und Überziehungen. Persönliche Teilrückmeldungen, Notizen und eine

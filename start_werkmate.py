@@ -5,9 +5,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from werkmate.gui import main  # noqa: E402
+from werkmate.simple_gui import main  # noqa: E402
 
 
 if __name__ == "__main__":
     main()
-
