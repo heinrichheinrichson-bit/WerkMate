@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.28.0 – sicherer manueller Auftragswechsel und wiederholbarer Alarm**
+**Version 0.29.0 – moderner, touchfreundlicher Tagesmonitor**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern

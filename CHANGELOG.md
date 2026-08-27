@@ -4,6 +4,24 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.29.0] - 2026-08-27
+
+### Oberfläche
+
+- Laufender Arbeitstag als scrollbar aufgebautes Dashboard für kleinere Fenster und Tablets
+- Startzeit, geplantes Ende und Fortschritt bleiben als erste Kennzahlen sichtbar
+- Aktueller und nächster Arbeitsschritt stehen direkt nebeneinander
+- Countdown, Fortschrittsbalken und geplante Rückmeldezeit bilden eine gemeinsame Hauptkarte
+- Prognose und Restmenge sind als nachgeordnete Informationen zusammengefasst
+- Größere Abstände, Touch-Schaltflächen und eine klarere aktive Tab-Markierung
+- Breiteres Standardfenster bei weiterhin nutzbarer Mindestgröße
+
+### Sicherheit und Qualität
+
+- Rückmelde-, Abbruch- und Verlängerungszustände bleiben von der optischen Umstellung getrennt
+- Leerer und aktiver Dashboard-Zustand manuell geprüft
+- Alle 83 automatisierten Tests bestanden
+
 ## [0.28.0] - 2026-08-27
 
 ### Neu

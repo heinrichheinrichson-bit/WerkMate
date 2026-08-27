@@ -89,8 +89,8 @@ class WerkMateApp(tk.Tk):
     def __init__(self, database_path=None) -> None:
         super().__init__()
         self.title(f"WerkMate {__version__}")
-        self.geometry("980x700")
-        self.minsize(840, 600)
+        self.geometry("1180x820")
+        self.minsize(900, 640)
 
         self.database = WerkMateDatabase(database_path or default_database_path())
         self.service = WerkMateService(self.database)
@@ -105,15 +105,41 @@ class WerkMateApp(tk.Tk):
 
     def _configure_style(self) -> None:
         style = ttk.Style(self)
-        if "vista" in style.theme_names():
-            style.theme_use("vista")
+        if "clam" in style.theme_names():
+            style.theme_use("clam")
+        self.configure(background="#f4f6f8")
+        style.configure("TFrame", background="#f4f6f8")
+        style.configure("TLabel", background="#f4f6f8", font=("Segoe UI", 10))
+        style.configure("TLabelframe", background="#ffffff", bordercolor="#d8dee8")
+        style.configure(
+            "TLabelframe.Label", background="#f4f6f8", foreground="#344054",
+            font=("Segoe UI", 10, "bold"),
+        )
+        style.configure("TNotebook", background="#f4f6f8", borderwidth=0)
+        style.configure(
+            "TNotebook.Tab", font=("Segoe UI", 10), padding=(14, 9),
+            background="#e8ecf2",
+        )
+        style.map(
+            "TNotebook.Tab",
+            background=[("selected", "#ffffff")],
+            foreground=[("selected", "#175cd3")],
+        )
         style.configure("Title.TLabel", font=("Segoe UI", 18, "bold"))
         style.configure("Countdown.TLabel", font=("Segoe UI", 34, "bold"))
         style.configure("Danger.TLabel", font=("Segoe UI", 34, "bold"), foreground="#b42318")
         style.configure("Alert.TLabel", font=("Segoe UI", 12, "bold"), foreground="#b42318")
         style.configure("Danger.Horizontal.TProgressbar", background="#b42318")
         style.configure("Muted.TLabel", foreground="#667085")
-        style.configure("Primary.TButton", font=("Segoe UI", 11, "bold"), padding=8)
+        style.configure("Section.TLabel", font=("Segoe UI", 11, "bold"), foreground="#344054")
+        style.configure(
+            "Primary.TButton", font=("Segoe UI", 11, "bold"), padding=(16, 11),
+            background="#2f6fed", foreground="#ffffff", borderwidth=0,
+        )
+        style.map("Primary.TButton", background=[("active", "#175cd3"), ("disabled", "#98a2b3")])
+        style.configure("Touch.TButton", font=("Segoe UI", 10, "bold"), padding=(14, 9))
+        style.configure("Modern.Horizontal.TProgressbar", thickness=14, background="#2f6fed")
+        style.configure("Danger.Horizontal.TProgressbar", thickness=14, background="#d92d20")
 
     def _build_ui(self) -> None:
         header = ttk.Frame(self, padding=(18, 14))
@@ -160,63 +186,106 @@ class WerkMateApp(tk.Tk):
         return current_shift_number(at, self.database.shift_settings())
 
     def _build_dashboard(self) -> None:
+        shell = ttk.Frame(self.dashboard_tab)
+        shell.pack(fill="both", expand=True)
+        dashboard_canvas = tk.Canvas(
+            shell, highlightthickness=0, borderwidth=0, background="#f4f6f8"
+        )
+        dashboard_scroll = ttk.Scrollbar(shell, orient="vertical", command=dashboard_canvas.yview)
+        dashboard_canvas.configure(yscrollcommand=dashboard_scroll.set)
+        dashboard_scroll.pack(side="right", fill="y")
+        dashboard_canvas.pack(side="left", fill="both", expand=True)
+        content = ttk.Frame(dashboard_canvas, padding=(4, 2, 12, 16))
+        dashboard_window = dashboard_canvas.create_window((0, 0), window=content, anchor="nw")
+        content.bind(
+            "<Configure>",
+            lambda _event: dashboard_canvas.configure(scrollregion=dashboard_canvas.bbox("all")),
+        )
+        dashboard_canvas.bind(
+            "<Configure>",
+            lambda event: dashboard_canvas.itemconfigure(dashboard_window, width=event.width),
+        )
+        dashboard_canvas.bind_all(
+            "<MouseWheel>",
+            lambda event: dashboard_canvas.yview_scroll(int(-event.delta / 120), "units")
+            if self.tabs.select() == str(self.dashboard_tab) else None,
+        )
+
         self.active_title = ttk.Label(
-            self.dashboard_tab, text="Kein laufender Auftrag", style="Title.TLabel"
+            content, text="Kein laufender Auftrag", style="Title.TLabel"
         )
         self.active_title.pack(anchor="w")
-        self.active_details = ttk.Label(self.dashboard_tab, text="", style="Muted.TLabel")
+        self.active_details = ttk.Label(content, text="", style="Muted.TLabel")
         self.active_details.pack(anchor="w", pady=(4, 12))
-        monitor = ttk.LabelFrame(self.dashboard_tab, text="Heute im Blick", padding=12)
+
+        monitor = ttk.LabelFrame(content, text="HEUTE IM BLICK", padding=14)
         monitor.pack(fill="x", pady=(0, 12))
         self.dashboard_start_value = self._dashboard_metric(monitor, 0, "STARTZEIT")
         self.dashboard_end_value = self._dashboard_metric(monitor, 1, "GEPLANTES ENDE")
         self.dashboard_progress_value = self._dashboard_metric(monitor, 2, "FORTSCHRITT")
-        self.countdown_caption = ttk.Label(self.dashboard_tab, text="")
-        self.countdown_caption.pack()
-        self.countdown = ttk.Label(self.dashboard_tab, text="--:--:--", style="Countdown.TLabel")
-        self.countdown.pack(pady=(4, 18))
-        self.work_progress = ttk.Progressbar(self.dashboard_tab, maximum=100, mode="determinate")
-        self.work_progress.pack(fill="x", padx=80, pady=(0, 10))
-        self.overdue_banner = ttk.Label(self.dashboard_tab, text="", style="Alert.TLabel")
-        self.overdue_banner.pack()
+
+        hero = ttk.LabelFrame(content, text="AKTUELLER ARBEITSSCHRITT", padding=16)
+        hero.pack(fill="x", pady=(0, 12))
+        hero.columnconfigure(0, weight=3)
+        hero.columnconfigure(1, weight=2)
+        current = ttk.Frame(hero)
+        current.grid(row=0, column=0, sticky="nsew", padx=(0, 18))
+        self.countdown_caption = ttk.Label(current, text="", style="Section.TLabel")
+        self.countdown_caption.pack(anchor="w")
+        self.countdown = ttk.Label(current, text="--:--:--", style="Countdown.TLabel")
+        self.countdown.pack(anchor="w", pady=(2, 8))
+        self.work_progress = ttk.Progressbar(
+            current, maximum=100, mode="determinate", style="Modern.Horizontal.TProgressbar"
+        )
+        self.work_progress.pack(fill="x", pady=(0, 8))
+        self.target_label = ttk.Label(current, text="")
+        self.target_label.pack(anchor="w")
+
+        next_frame = ttk.Frame(hero, padding=(16, 8))
+        next_frame.grid(row=0, column=1, sticky="nsew")
+        ttk.Label(next_frame, text="ALS NÄCHSTES", style="Muted.TLabel").pack(anchor="w")
+        self.dashboard_next_title = ttk.Label(
+            next_frame, text="Kein weiterer Auftrag geplant", font=("Segoe UI", 12, "bold"),
+            wraplength=380,
+        )
+        self.dashboard_next_title.pack(anchor="w", pady=(7, 3))
+        self.dashboard_next_details = ttk.Label(
+            next_frame, text="", style="Muted.TLabel", wraplength=380, justify="left"
+        )
+        self.dashboard_next_details.pack(anchor="w")
+
+        self.overdue_banner = ttk.Label(content, text="", style="Alert.TLabel", wraplength=1000)
+        self.overdue_banner.pack(anchor="w")
         self.overdue_reminder_button = ttk.Button(
-            self.dashboard_tab, text="Erneut in 3 Minuten erinnern",
+            content, text="Erneut in 3 Minuten erinnern", style="Touch.TButton",
             command=self.schedule_overdue_reminder, state="disabled",
         )
-        self.overdue_reminder_button.pack(pady=(5, 0))
-        self.target_label = ttk.Label(self.dashboard_tab, text="")
-        self.target_label.pack()
+        self.overdue_reminder_button.pack(anchor="w", pady=(5, 8))
+        actions = ttk.Frame(content)
+        actions.pack(fill="x", pady=(0, 12))
         self.extend_work_button = ttk.Button(
-            self.dashboard_tab, text="Brauche länger / neue Endzeit setzen",
+            actions, text="Brauche länger / neue Endzeit setzen", style="Touch.TButton",
             command=self.extend_active_session,
         )
-        self.extend_work_button.pack(pady=(8, 0))
-        self.forecast_label = ttk.Label(self.dashboard_tab, text="", justify="center")
-        self.forecast_label.pack(pady=18)
-        self.order_remaining_label = ttk.Label(
-            self.dashboard_tab, text="", justify="center", style="Muted.TLabel"
-        )
-        self.order_remaining_label.pack(pady=(0, 8))
+        self.extend_work_button.pack(side="left")
         self.cancel_work_button = ttk.Button(
-            self.dashboard_tab,
-            text="Fehlstart / Arbeitseinsatz abbrechen",
-            command=self.cancel_active,
+            actions, text="Fehlstart abbrechen", command=self.cancel_active,
         )
-        self.cancel_work_button.pack()
+        self.cancel_work_button.pack(side="right")
 
-        next_frame = ttk.LabelFrame(self.dashboard_tab, text="Als Nächstes", padding=10)
-        next_frame.pack(fill="x", pady=(14, 8))
-        self.dashboard_next_title = ttk.Label(
-            next_frame, text="Kein weiterer Auftrag geplant", font=("Segoe UI", 11, "bold")
+        details = ttk.LabelFrame(content, text="PROGNOSE UND RESTMENGE", padding=12)
+        details.pack(fill="x", pady=(0, 12))
+        self.forecast_label = ttk.Label(details, text="", justify="left")
+        self.forecast_label.pack(anchor="w")
+        self.order_remaining_label = ttk.Label(
+            details, text="", justify="left", style="Muted.TLabel"
         )
-        self.dashboard_next_title.pack(anchor="w")
-        self.dashboard_next_details = ttk.Label(next_frame, text="", style="Muted.TLabel")
-        self.dashboard_next_details.pack(anchor="w", pady=(3, 0))
+        self.order_remaining_label.pack(anchor="w", pady=(6, 0))
 
-        timeline = ttk.LabelFrame(self.dashboard_tab, text="Heutiger Arbeitsablauf", padding=8)
-        timeline.pack(fill="both", expand=True, pady=(0, 8))
+        timeline = ttk.LabelFrame(content, text="HEUTIGER ARBEITSABLAUF", padding=10)
+        timeline.pack(fill="both", expand=True, pady=(0, 12))
         self.dashboard_timeline_canvas = tk.Canvas(
-            timeline, height=190, highlightthickness=0, bg="#f0f0f0"
+            timeline, height=230, highlightthickness=0, bg="#f4f6f8"
         )
         timeline_scroll = ttk.Scrollbar(
             timeline, orient="vertical", command=self.dashboard_timeline_canvas.yview
@@ -241,8 +310,9 @@ class WerkMateApp(tk.Tk):
             ),
         )
 
-        finish = ttk.LabelFrame(self.dashboard_tab, text="Arbeitseinsatz rückmelden", padding=14)
-        finish.pack(fill="x", pady=(20, 0))
+        finish = ttk.LabelFrame(content, text="ARBEITSEINSATZ RÜCKMELDEN", padding=14)
+        finish.pack(fill="x")
+        self.finish_frame = finish
         self.finish_actual_label = ttk.Label(finish, text="Tatsächlich bearbeitet:")
         self.finish_actual_label.grid(row=0, column=0, sticky="w")
         self.finish_quantity = ttk.Entry(finish, width=10)
@@ -2279,7 +2349,7 @@ class WerkMateApp(tk.Tk):
         for index, item in enumerate(rows):
             row = ttk.Frame(self.dashboard_timeline_frame)
             row.pack(fill="x", pady=3, padx=4)
-            rail = tk.Canvas(row, width=48, height=62, highlightthickness=0, bg="#f0f0f0")
+            rail = tk.Canvas(row, width=48, height=62, highlightthickness=0, bg="#f4f6f8")
             rail.pack(side="left", fill="y")
             color = "#2f6fed" if item["timeline_state"] == "AKTIV" else "#8793a5"
             rail.create_oval(8, 6, 40, 38, fill=color, outline="")
@@ -2305,12 +2375,6 @@ class WerkMateApp(tk.Tk):
     def refresh_dashboard(self) -> None:
         status = self.service.status()
         active = status is not None
-        for child in self.dashboard_tab.winfo_children()[-1:]:
-            for widget in child.winfo_children():
-                try:
-                    widget.configure(state="normal" if active else "disabled")
-                except tk.TclError:
-                    pass
         if not active:
             self.active_title.configure(text="Kein laufender Auftrag")
             self.active_details.configure(text="Im Reiter „Aufträge“ kann ein Auftrag gestartet werden.")
@@ -2318,7 +2382,7 @@ class WerkMateApp(tk.Tk):
             self.countdown.configure(text="--:--:--", style="Countdown.TLabel")
             self.target_label.configure(text="")
             self.work_progress.configure(value=0)
-            self.work_progress.configure(style="Horizontal.TProgressbar")
+            self.work_progress.configure(style="Modern.Horizontal.TProgressbar")
             self.overdue_banner.configure(text="")
             self.overdue_reminder_button.configure(state="disabled")
             self.overdue_reminder_at = None
@@ -2329,10 +2393,20 @@ class WerkMateApp(tk.Tk):
             self.forecast_label.configure(text="")
             self.order_remaining_label.configure(text="")
             self.cancel_work_button.configure(state="disabled")
+            self.finish_quantity.configure(state="disabled")
+            self.finish_reported_quantity.configure(state="disabled")
+            self.finish_time.configure(state="disabled")
+            self.finish_note.configure(state="disabled")
+            self.partial_finish_button.configure(state="disabled")
+            self.finish_entire_button.configure(state="disabled")
             self._render_dashboard_timeline(None)
             return
         self.cancel_work_button.configure(state="normal")
         self.extend_work_button.configure(state="normal")
+        self.finish_time.configure(state="normal")
+        self.finish_note.configure(state="normal")
+        self.partial_finish_button.configure(state="normal")
+        self.finish_reported_quantity.configure(state="normal")
 
         is_credit = status.get("session_kind") == "credit"
         self.finish_actual_label.configure(
@@ -2370,7 +2444,7 @@ class WerkMateApp(tk.Tk):
             style="Danger.TLabel" if overdue else "Countdown.TLabel",
         )
         self.work_progress.configure(
-            style="Danger.Horizontal.TProgressbar" if overdue else "Horizontal.TProgressbar"
+            style="Danger.Horizontal.TProgressbar" if overdue else "Modern.Horizontal.TProgressbar"
         )
         self.overdue_banner.configure(
             text=(
