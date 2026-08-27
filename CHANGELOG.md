@@ -4,6 +4,34 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.31.0] - 2026-08-27
+
+### Vereinfachte Auftragsbedienung
+
+- Standardansicht von zehn auf fünf verständliche Informationsspalten reduziert
+- Technische Statuswerte durch Offen, Teilweise erledigt, Fertig und Abgegeben ersetzt
+- Suche nach Auftrag, Gesenk, Arbeitsgang oder Status
+- Statusfilter mit einer auf laufende Arbeiten reduzierten Standardauswahl
+- Neuanlage bleibt geschlossen, bis sie bewusst über „Neuer Auftrag“ geöffnet wird
+- Auswahl zeigt nur Auftrag, offene Menge, Stückzeit, Status und die berechnete Empfehlung
+- Eine eindeutige Hauptaktion „Arbeit starten“
+- Sonderangaben zu Anmeldezeit und Schicht liegen hinter „Startoptionen“
+- Auftrag kann vorausgewählt an den Schichtplan übergeben werden
+- Bearbeiten, Duplizieren, Guthaben, Abgeben, Änderungsprotokoll und Papierkorb unter „Mehr“ gebündelt
+- Papierkorb bleibt unabhängig über die Suchleiste erreichbar
+
+### Klarheit und Sicherheit
+
+- Lange technische Produktionsprognose durch eine kurze Schichtempfehlung ersetzt
+- Kein Start durch bloße Auswahl oder Doppelklick
+- Seltene Verwaltungsaktionen stehen nicht mehr gleichwertig neben der Hauptaktion
+
+### Qualität
+
+- GUI-Prüfung für reduzierte Neuanlage, Suchfilter und Startoptionen
+- GUI-Prüfung für automatische Stückempfehlung und Übergabe an den Schichtplan
+- Alle 83 automatisierten Tests bestanden
+
 ## [0.30.0] - 2026-08-27
 
 ### Schichtplanung

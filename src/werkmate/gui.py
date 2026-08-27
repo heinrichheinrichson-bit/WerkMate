@@ -435,8 +435,21 @@ class WerkMateApp(tk.Tk):
             ))
 
     def _build_orders(self) -> None:
-        form = ttk.LabelFrame(self.orders_tab, text="Neuen Auftrag anlegen", padding=12)
-        form.pack(fill="x")
+        header = ttk.Frame(self.orders_tab)
+        header.pack(fill="x")
+        ttk.Label(header, text="Meine Aufträge", style="Title.TLabel").pack(side="left")
+        ttk.Button(
+            header, text="＋ Neuer Auftrag", style="Touch.TButton",
+            command=self.toggle_new_order_form,
+        ).pack(side="right")
+        ttk.Label(
+            self.orders_tab,
+            text="Auftrag auswählen, Empfehlung prüfen und starten. Weitere Funktionen stehen unter „Mehr“.",
+            style="Muted.TLabel",
+        ).pack(anchor="w", pady=(3, 10))
+
+        form = ttk.LabelFrame(self.orders_tab, text="NEUEN AUFTRAG ANLEGEN", padding=12)
+        self.order_form = form
         labels = ("Auftragsnummer", "Gesenknummer", "Arbeitsgang", "Menge", "min/Stück")
         self.order_entries: list[ttk.Entry] = []
         for column, label in enumerate(labels):
@@ -448,7 +461,7 @@ class WerkMateApp(tk.Tk):
         ttk.Label(form, text="Auftragsnotiz").grid(row=2, column=0, sticky="w", padx=4)
         self.order_note = ttk.Entry(form)
         self.order_note.grid(row=3, column=0, columnspan=4, sticky="ew", padx=4)
-        ttk.Button(form, text="Auftrag anlegen", command=self.create_order).grid(
+        ttk.Button(form, text="AUFTRAG SPEICHERN", style="Primary.TButton", command=self.create_order).grid(
             row=3, column=4, sticky="ew", padx=4
         )
         self.order_total_time = ttk.Label(form, text="Gesamtvorgabezeit: –", style="Muted.TLabel")
@@ -456,73 +469,83 @@ class WerkMateApp(tk.Tk):
         self.order_entries[3].bind("<KeyRelease>", lambda _event: self.refresh_order_total_time())
         self.order_entries[4].bind("<KeyRelease>", lambda _event: self.refresh_order_total_time())
 
-        list_frame = ttk.LabelFrame(self.orders_tab, text="Gespeicherte Aufträge", padding=10)
-        list_frame.pack(fill="both", expand=True, pady=14)
-        columns = (
-            "id", "order", "die", "operation", "processed", "reported",
-            "credit", "open", "time", "status",
+        search = ttk.Frame(self.orders_tab)
+        search.pack(fill="x", pady=(0, 8))
+        ttk.Label(search, text="Suchen:").pack(side="left")
+        self.order_search = ttk.Entry(search, width=28)
+        self.order_search.pack(side="left", padx=(6, 14))
+        self.order_search.bind("<KeyRelease>", lambda _event: self.refresh_orders())
+        ttk.Label(search, text="Status:").pack(side="left")
+        self.order_filter = ttk.Combobox(
+            search, values=("Aktiv", "Alle", "Offen", "Teilweise erledigt", "Fertig", "Abgegeben"),
+            state="readonly", width=18,
         )
-        self.orders_tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=10)
-        headings = (
-            "ID", "Auftrag", "Gesenk", "AG", "Bearbeitet", "Rückgemeldet",
-            "Guthaben", "Noch bearbeiten", "Gesamtzeit", "Status"
-        )
-        widths = (40, 105, 75, 55, 90, 95, 170, 95, 155, 125)
+        self.order_filter.set("Aktiv")
+        self.order_filter.pack(side="left", padx=6)
+        self.order_filter.bind("<<ComboboxSelected>>", lambda _event: self.refresh_orders())
+        ttk.Button(search, text="Papierkorb", command=self.open_order_trash).pack(side="right")
+
+        list_frame = ttk.LabelFrame(self.orders_tab, text="AUFTRÄGE", padding=10)
+        list_frame.pack(fill="both", expand=True)
+        columns = ("id", "order", "die_operation", "open", "target", "status")
+        self.orders_tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=9)
+        headings = ("", "Auftrag", "Gesenk / Arbeitsgang", "Offen", "Vorgabe", "Status")
+        widths = (0, 180, 190, 90, 130, 140)
         for column, heading, width in zip(columns, headings, widths):
             self.orders_tree.heading(column, text=heading)
-            self.orders_tree.column(column, width=width, anchor="center")
+            self.orders_tree.column(
+                column, width=width, minwidth=0 if column == "id" else 60,
+                stretch=column != "id", anchor="center",
+            )
+        self.orders_tree.tag_configure("partial", foreground="#175cd3")
+        self.orders_tree.tag_configure("finished", foreground="#667085")
+        self.orders_tree.tag_configure("handed", foreground="#b54708")
         self.orders_tree.pack(fill="both", expand=True)
-        self.orders_tree.bind("<Double-1>", lambda _event: self.edit_selected_order())
         self.orders_tree.bind("<<TreeviewSelect>>", self._order_selected)
-        order_actions = ttk.Frame(list_frame)
-        order_actions.pack(fill="x", pady=(8, 0))
-        ttk.Button(order_actions, text="Auftrag bearbeiten", command=self.edit_selected_order).pack(
-            side="left"
+
+        start = ttk.LabelFrame(self.orders_tab, text="AUSGEWÄHLTER AUFTRAG", padding=12)
+        start.pack(fill="x", pady=(10, 0))
+        self.order_selection_title = ttk.Label(
+            start, text="Noch keinen Auftrag ausgewählt", font=("Segoe UI", 12, "bold")
         )
-        ttk.Button(order_actions, text="Änderungen anzeigen", command=self.show_order_corrections).pack(
-            side="left", padx=8
+        self.order_selection_title.grid(row=0, column=0, columnspan=5, sticky="w")
+        self.order_selection_details = ttk.Label(start, text="", style="Muted.TLabel")
+        self.order_selection_details.grid(row=1, column=0, columnspan=5, sticky="w", pady=(3, 10))
+        ttk.Label(start, text="Stück für diesen Einsatz:").grid(row=2, column=0, sticky="w")
+        self.start_quantity = ttk.Entry(start, width=9)
+        self.start_quantity.grid(row=2, column=1, padx=(6, 18), sticky="w")
+        ttk.Button(
+            start, text="ARBEIT STARTEN", style="Primary.TButton", command=self.start_selected
+        ).grid(row=2, column=4, sticky="ew")
+        self.start_forecast = ttk.Label(
+            start, text="Auftrag auswählen – WerkMate schlägt die passende Stückzahl vor.",
+            justify="left", foreground="#175cd3",
         )
-        ttk.Button(order_actions, text="Guthaben anmelden", command=self.open_credit_dialog).pack(
-            side="left"
+        self.start_forecast.grid(row=3, column=0, columnspan=5, sticky="w", pady=(8, 0))
+        options_button = ttk.Button(
+            start, text="Startoptionen", command=self.toggle_start_options
         )
-        ttk.Button(order_actions, text="Duplizieren", command=self.duplicate_selected_order).pack(
-            side="left", padx=8
+        options_button.grid(row=4, column=0, sticky="w", pady=(10, 0))
+        ttk.Button(start, text="Zum Schichtplan", command=self.add_selected_order_to_plan).grid(
+            row=4, column=1, sticky="w", pady=(10, 0)
         )
-        ttk.Button(order_actions, text="In Papierkorb", command=self.archive_selected_order).pack(
-            side="left"
-        )
-        ttk.Button(order_actions, text="Papierkorb", command=self.open_order_trash).pack(
-            side="right", padx=(8, 0)
-        )
-        ttk.Button(order_actions, text="Abgegebenen Auftrag wieder aufnehmen", command=self.resume_selected).pack(
-            side="right"
+        ttk.Button(start, text="Mehr ⋯", command=self.open_order_more_menu).grid(
+            row=4, column=4, sticky="e", pady=(10, 0)
         )
 
-        start = ttk.LabelFrame(self.orders_tab, text="Ausgewählten Auftrag starten", padding=12)
-        start.pack(fill="x")
-        ttk.Label(start, text="Menge:").grid(row=0, column=0, sticky="w")
-        self.start_quantity = ttk.Entry(start, width=9)
-        self.start_quantity.grid(row=0, column=1, padx=(6, 18))
-        ttk.Label(start, text="Anmeldezeit:").grid(row=0, column=2, sticky="w")
-        self.start_time = ttk.Entry(start, width=19)
-        self.start_time.grid(row=0, column=3, padx=6)
-        ttk.Button(start, text="Jetzt", command=self._fill_start_now).grid(row=0, column=4, padx=(0, 18))
-        ttk.Label(start, text="Schicht:").grid(row=0, column=5)
-        self.shift_number = ttk.Combobox(start, values=("1", "2", "3"), width=5, state="readonly")
-        self.shift_number.grid(row=0, column=6, padx=6)
-        ttk.Button(
-            start, text="Arbeit starten", style="Primary.TButton", command=self.start_selected
-        ).grid(row=0, column=7, sticky="ew")
-        ttk.Button(start, text="Rest abgeben", command=self.hand_off_selected).grid(
-            row=1, column=7, sticky="ew", pady=(8, 0)
+        self.start_options_frame = ttk.Frame(start)
+        ttk.Label(self.start_options_frame, text="Anmeldezeit:").grid(row=0, column=0, sticky="w")
+        self.start_time = ttk.Entry(self.start_options_frame, width=19)
+        self.start_time.grid(row=0, column=1, padx=6)
+        ttk.Button(self.start_options_frame, text="Jetzt", command=self._fill_start_now).grid(
+            row=0, column=2, padx=(0, 18)
         )
-        self.start_forecast = ttk.Label(
-            start,
-            text="Auftrag und Schicht auswählen, um die Sollstückzahl zu berechnen.",
-            justify="left",
+        ttk.Label(self.start_options_frame, text="Schicht:").grid(row=0, column=3)
+        self.shift_number = ttk.Combobox(
+            self.start_options_frame, values=("1", "2", "3"), width=5, state="readonly"
         )
-        self.start_forecast.grid(row=1, column=0, columnspan=7, sticky="w", pady=(10, 0))
-        start.columnconfigure(7, weight=1)
+        self.shift_number.grid(row=0, column=4, padx=6)
+        start.columnconfigure(4, weight=1)
         self.order_entries[1].bind("<<ComboboxSelected>>", self._catalog_die_selected)
         self.order_entries[1].bind("<FocusIn>", lambda _event: self._refresh_die_suggestions())
         self.order_entries[2].bind("<<ComboboxSelected>>", self._catalog_operation_selected)
@@ -535,6 +558,60 @@ class WerkMateApp(tk.Tk):
         )
         self.shift_number.set(str(self._current_shift_number(local_now())))
         self._fill_start_now()
+
+    def toggle_new_order_form(self) -> None:
+        if self.order_form.winfo_manager():
+            self.order_form.pack_forget()
+        else:
+            self.order_form.pack(fill="x", after=self.orders_tab.winfo_children()[1], pady=(0, 10))
+            self.order_entries[0].focus_set()
+
+    def toggle_start_options(self) -> None:
+        if self.start_options_frame.winfo_manager():
+            self.start_options_frame.grid_remove()
+        else:
+            self.start_options_frame.grid(
+                row=5, column=0, columnspan=5, sticky="ew", pady=(10, 0)
+            )
+
+    def open_order_more_menu(self) -> None:
+        try:
+            order = self.database.get_order(self.selected_order_id())
+            if order is None:
+                raise ValueError("Bitte zuerst einen Auftrag auswählen.")
+        except ValueError as error:
+            messagebox.showinfo("Keine Auswahl", str(error), parent=self)
+            return
+        menu = tk.Menu(self, tearoff=False)
+        menu.add_command(label="Bearbeiten", command=self.edit_selected_order)
+        menu.add_command(label="Duplizieren", command=self.duplicate_selected_order)
+        menu.add_command(label="Guthaben anmelden", command=self.open_credit_dialog)
+        menu.add_separator()
+        if order["status"] == "abgegeben":
+            menu.add_command(label="Wieder aufnehmen", command=self.resume_selected)
+        else:
+            menu.add_command(label="Offenen Rest abgeben", command=self.hand_off_selected)
+        menu.add_command(label="Änderungen anzeigen", command=self.show_order_corrections)
+        menu.add_command(label="In Papierkorb verschieben", command=self.archive_selected_order)
+        menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
+
+    def add_selected_order_to_plan(self) -> None:
+        try:
+            order_id = self.selected_order_id()
+        except ValueError as error:
+            messagebox.showinfo("Keine Auswahl", str(error), parent=self)
+            return
+        self.refresh_plan_orders()
+        label = next(
+            (text for text, order in self._plan_order_map.items() if int(order["id"]) == order_id),
+            None,
+        )
+        if label is None:
+            messagebox.showerror("Nicht verfügbar", "Der Auftrag kann derzeit nicht geplant werden.", parent=self)
+            return
+        self.plan_order.set(label)
+        self.tabs.select(self.plan_tab)
+        self.plan_value.focus_set()
 
     def _build_quick_start(self) -> None:
         ttk.Label(self.quick_tab, text="Mit möglichst wenigen Angaben starten", style="Title.TLabel").pack(
@@ -1553,6 +1630,7 @@ class WerkMateApp(tk.Tk):
         self.order_note.delete(0, tk.END)
         self.refresh_order_total_time()
         self.refresh_orders()
+        self.order_form.pack_forget()
         messagebox.showinfo("Gespeichert", "Der Auftrag wurde lokal angelegt.", parent=self)
 
     def _refresh_die_suggestions(self) -> None:
@@ -1666,6 +1744,20 @@ class WerkMateApp(tk.Tk):
             return
         if order is None:
             return
+        status_labels = {
+            "offen": "Offen", "teilweise_erledigt": "Teilweise erledigt",
+            "abgeschlossen": "Fertig", "abgegeben": "Abgegeben",
+        }
+        self.order_selection_title.configure(
+            text=f"{order['order_number']} · Ges. {order['die_number']} · {order['operation']}"
+        )
+        self.order_selection_details.configure(
+            text=(
+                f"{order['open_quantity']} von {order['original_quantity']} Stück offen · "
+                f"{seconds_to_minutes(order['seconds_per_piece'])} min/Stück · "
+                f"{status_labels.get(order['status'], order['status'])}"
+            )
+        )
         self.refresh_start_forecast(apply_recommendation=True)
 
     def refresh_start_forecast(self, *, apply_recommendation: bool = False) -> None:
@@ -1681,23 +1773,15 @@ class WerkMateApp(tk.Tk):
                     text="Auftrag, Anmeldezeit und Schicht auswählen, um die Sollstückzahl zu berechnen."
                 )
             return
-        available = format_duration(forecast["available_seconds"])
         equivalent = format_piece_equivalent(forecast["target_equivalent"])
         if apply_recommendation:
             self._set_entry(self.start_quantity, str(forecast["complete_pieces"]))
         text = (
-            f"Bis {forecast['shift_end']:%H:%M}: {available} produktiv · "
-            f"Sollleistung {equivalent} Stück · "
-            f"empfohlener Einsatz {forecast['complete_pieces']} vollständige Stück · "
-            f"danach {forecast['open_after_shift']} Stück offen"
+            f"Empfehlung bis {forecast['shift_end']:%H:%M}: "
+            f"{forecast['complete_pieces']} ganze Stück ({equivalent} rechnerisch)"
         )
         if forecast["open_after_shift"]:
-            next_finish = forecast["next_piece_finish"]
-            text += (
-                f"\nDanach bleiben {format_duration(forecast['remainder_seconds'])} bis Schichtende. "
-                f"Ein weiteres Stück wäre um {next_finish:%H:%M} fertig "
-                f"({forecast['next_piece_overtime_seconds'] // 60} Min. nach Schichtende)."
-            )
+            text += f" · danach {forecast['open_after_shift']} Stück offen"
         self.start_forecast.configure(text=text)
 
     def start_selected(self) -> None:
@@ -2314,23 +2398,48 @@ class WerkMateApp(tk.Tk):
         )
 
     def refresh_orders(self) -> None:
+        selected_id = None
+        try:
+            selected_id = self.selected_order_id()
+        except ValueError:
+            pass
         self.orders_tree.delete(*self.orders_tree.get_children())
+        search = self.order_search.get().strip().casefold() if hasattr(self, "order_search") else ""
+        chosen_filter = self.order_filter.get() if hasattr(self, "order_filter") else "Aktiv"
+        status_labels = {
+            "offen": "Offen", "teilweise_erledigt": "Teilweise erledigt",
+            "abgeschlossen": "Fertig", "abgegeben": "Abgegeben",
+        }
         for order in self.database.list_orders():
+            status_text = status_labels.get(order["status"], order["status"])
+            haystack = " ".join((
+                str(order["order_number"]), str(order["die_number"]),
+                str(order["operation"]), status_text,
+            )).casefold()
+            if search and search not in haystack:
+                continue
+            if chosen_filter == "Aktiv" and order["status"] not in ("offen", "teilweise_erledigt"):
+                continue
+            if chosen_filter not in ("Aktiv", "Alle") and status_text != chosen_filter:
+                continue
+            remaining_seconds = int(order["open_quantity"]) * int(order["seconds_per_piece"])
             self.orders_tree.insert(
-                "", "end", values=(
-                    order["id"], order["order_number"], order["die_number"],
-                    order["operation"],
-                    f"{order['completed_quantity']}/{order['original_quantity']}",
-                    f"{order['reported_quantity']}/{order['original_quantity']}",
-                    f"{order['credit_quantity']} Stk · "
-                    f"{seconds_to_minutes(order['credit_quantity'] * order['seconds_per_piece'])} min",
+                "", "end", iid=str(order["id"]), values=(
+                    order["id"], order["order_number"],
+                    f"{order['die_number']} / {order['operation']}",
                     f"{order['open_quantity']} Stk",
-                    format_total_target_time(
-                        int(order["original_quantity"]) * int(order["seconds_per_piece"])
-                    ),
-                    order["status"],
-                )
+                    f"{seconds_to_minutes(order['seconds_per_piece'])} min/Stk · "
+                    f"{seconds_to_minutes(remaining_seconds)} min offen",
+                    status_text,
+                ),
+                tags=(
+                    "finished" if order["status"] == "abgeschlossen" else
+                    "partial" if order["status"] == "teilweise_erledigt" else
+                    "handed" if order["status"] == "abgegeben" else ""
+                ,),
             )
+        if selected_id is not None and self.orders_tree.exists(str(selected_id)):
+            self.orders_tree.selection_set(str(selected_id))
 
     def _dashboard_future_results(self, status: dict | None) -> list[dict]:
         plan = self.database.active_shift_plan()
