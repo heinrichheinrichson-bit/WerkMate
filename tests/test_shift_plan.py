@@ -135,6 +135,24 @@ def test_following_order_starts_exactly_when_first_one_ends(tmp_path) -> None:
     assert plan[1]["planned_start"] == datetime(2026, 8, 27, 6, 45)
 
 
+def test_same_order_cannot_be_planned_twice_beyond_its_open_quantity(tmp_path) -> None:
+    database = WerkMateDatabase(tmp_path / "db.sqlite3")
+    service = WerkMateService(database)
+    order_id = service.create_order(
+        order_number="NICHT-DOPPELT", die_number="2210", operation="FP",
+        original_quantity=10, seconds_per_piece=6 * 60,
+    )
+    plan = service.plan_sequence(
+        items=[
+            {"order_id": order_id, "mode": "work_capped", "value": 6},
+            {"order_id": order_id, "mode": "work_capped", "value": 6},
+        ],
+        reported_start=datetime(2026, 8, 27, 5, 45), shift_number=1,
+    )
+    assert [item["quantity"] for item in plan] == [6, 4]
+    assert plan[1]["remaining_after_plan"] == 0
+
+
 def test_credit_block_can_precede_new_work(tmp_path) -> None:
     database = WerkMateDatabase(tmp_path / "db.sqlite3")
     service = WerkMateService(database)

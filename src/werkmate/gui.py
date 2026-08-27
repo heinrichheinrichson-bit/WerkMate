@@ -556,6 +556,9 @@ class WerkMateApp(tk.Tk):
         ttk.Button(
             queue_buttons, text="Startzeit bearbeiten", command=self.edit_plan_item_start
         ).pack(side="left", padx=6)
+        ttk.Button(
+            queue_buttons, text="Planpunkt bearbeiten", command=self.edit_shift_plan_item
+        ).pack(side="left", padx=(0, 6))
         ttk.Button(queue_buttons, text="▲", width=4, command=lambda: self.move_plan_item(-1)).pack(
             side="left"
         )
@@ -578,6 +581,10 @@ class WerkMateApp(tk.Tk):
             result_frame, text="Gesamtzeit: –", font=("Segoe UI", 12, "bold")
         )
         self.plan_total_label.pack(anchor="w", pady=(0, 8))
+        self.plan_capacity_bar = ttk.Progressbar(result_frame, maximum=100, mode="determinate")
+        self.plan_capacity_bar.pack(fill="x", pady=(0, 6))
+        self.plan_status_label = ttk.Label(result_frame, text="Noch kein Ablauf berechnet.")
+        self.plan_status_label.pack(anchor="w", pady=(0, 8))
         self.plan_cards_frame = ttk.Frame(result_frame)
         self.plan_cards_frame.pack(fill="both", expand=True)
         self.plan_start_button = ttk.Button(
@@ -769,12 +776,113 @@ class WerkMateApp(tk.Tk):
         except ValueError as error:
             messagebox.showerror("Ungültige Startzeit", str(error), parent=self); return
         self.refresh_shift_plan_queue()
+        self._refresh_plan_after_change()
+
+    def _selected_plan_index(self) -> int | None:
+        selected = self.plan_queue.selection()
+        return int(selected[0]) if selected else None
+
+    def edit_shift_plan_item(self, index: int | None = None) -> None:
+        index = self._selected_plan_index() if index is None else index
+        if index is None or index < 0 or index >= len(self.shift_plan_items):
+            messagebox.showinfo("Keine Auswahl", "Bitte einen Planpunkt auswählen.", parent=self)
+            return
+        item = self.shift_plan_items[index]
+        dialog = tk.Toplevel(self)
+        dialog.title("Planpunkt bearbeiten")
+        dialog.transient(self); dialog.grab_set(); dialog.resizable(False, False)
+        body = ttk.Frame(dialog, padding=16); body.pack(fill="both", expand=True)
+        ttk.Label(
+            body,
+            text=f"{item['order']['order_number']} · {item['order']['die_number']}/{item['order']['operation']}",
+            font=("Segoe UI", 11, "bold"),
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
+        modes = (
+            "Bis Schichtende begrenzen", "Feste Stückzahl (Überzeit möglich)",
+            "Restschicht mit Auftrag füllen", "Guthaben nach Stück", "Guthaben nach Minuten",
+        )
+        ttk.Label(body, text="Planungsart:").grid(row=1, column=0, sticky="w", pady=5)
+        mode_entry = ttk.Combobox(body, values=modes, state="readonly", width=34)
+        mode_entry.set(item["label"]); mode_entry.grid(row=1, column=1, padx=(12, 0), pady=5)
+        ttk.Label(body, text="Stück/Minuten:").grid(row=2, column=0, sticky="w", pady=5)
+        value_entry = ttk.Entry(body, width=36)
+        if item.get("value") is not None:
+            shown = seconds_to_minutes(item["value"]) if item["mode"] == "credit_time" else item["value"]
+            value_entry.insert(0, str(shown).replace(".", ","))
+        value_entry.grid(row=2, column=1, padx=(12, 0), pady=5)
+        ttk.Label(body, text="Abweichende Startzeit:").grid(row=3, column=0, sticky="w", pady=5)
+        start_entry = ttk.Entry(body, width=36)
+        if isinstance(item.get("start_override"), datetime):
+            start_entry.insert(0, item["start_override"].strftime("%H:%M"))
+        start_entry.grid(row=3, column=1, padx=(12, 0), pady=5)
+
+        def save() -> None:
+            mode_map = {
+                "Bis Schichtende begrenzen": "work_capped",
+                "Feste Stückzahl (Überzeit möglich)": "work_fixed",
+                "Restschicht mit Auftrag füllen": "work_fill",
+                "Guthaben nach Stück": "credit_quantity",
+                "Guthaben nach Minuten": "credit_time",
+            }
+            mode = mode_map[mode_entry.get()]
+            try:
+                if mode == "work_fill":
+                    value = None
+                elif mode == "credit_time":
+                    value = minutes_to_seconds(value_entry.get())
+                else:
+                    value = int(value_entry.get())
+                    if value <= 0:
+                        raise ValueError
+                start = (
+                    parse_plan_start_override(start_entry.get(), self._parsed_plan_start())
+                    if start_entry.get().strip() else None
+                )
+            except (ValueError, TypeError):
+                messagebox.showerror(
+                    "Eingabe prüfen", "Bitte eine gültige Menge, Minuten- oder Startzeit eingeben.",
+                    parent=dialog,
+                )
+                return
+            item.update(mode=mode, value=value, label=mode_entry.get(), start_override=start)
+            dialog.destroy()
+            self.refresh_shift_plan_queue()
+            self._refresh_plan_after_change()
+
+        actions = ttk.Frame(body); actions.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        ttk.Button(actions, text="Abbrechen", command=dialog.destroy).pack(side="left")
+        ttk.Button(actions, text="Änderungen übernehmen", style="Primary.TButton", command=save).pack(
+            side="right", padx=(10, 0)
+        )
+
+    def duplicate_shift_plan_item(self, index: int) -> None:
+        if index < 0 or index >= len(self.shift_plan_items):
+            return
+        original = self.shift_plan_items[index]
+        duplicate = {
+            key: value for key, value in original.items()
+            if key != "plan_item_id"
+        }
+        duplicate["start_override"] = None
+        self.shift_plan_items.insert(index + 1, duplicate)
+        self.refresh_shift_plan_queue()
+        self._refresh_plan_after_change()
+
+    def _refresh_plan_after_change(self) -> None:
+        if not self.shift_plan_items:
+            self.shift_plan_results.clear()
+            self.database.discard_shift_plan()
+            self.render_shift_plan_cards([])
+            return
+        self.calculate_shift_plan()
 
     def move_plan_item(self, direction: int) -> None:
         selected = self.plan_queue.selection()
         if not selected:
             return
-        source = int(selected[0])
+        self.move_shift_plan_item_at(int(selected[0]), direction)
+
+    def move_shift_plan_item_at(self, source: int, direction: int) -> None:
         target = source + direction
         if target < 0 or target >= len(self.shift_plan_items):
             return
@@ -782,7 +890,7 @@ class WerkMateApp(tk.Tk):
         self.shift_plan_items.insert(target, item)
         self.refresh_shift_plan_queue()
         self.plan_queue.selection_set(str(target))
-        self.render_shift_plan_cards([])
+        self._refresh_plan_after_change()
 
     def _plan_drag_start(self, event) -> None:
         row = self.plan_queue.identify_row(event.y)
@@ -801,7 +909,7 @@ class WerkMateApp(tk.Tk):
         self.shift_plan_items.insert(target, item)
         self.refresh_shift_plan_queue()
         self.plan_queue.selection_set(str(target))
-        self.render_shift_plan_cards([])
+        self._refresh_plan_after_change()
 
     def refresh_shift_plan_queue(self) -> None:
         self.plan_queue.delete(*self.plan_queue.get_children())
@@ -821,13 +929,13 @@ class WerkMateApp(tk.Tk):
                 )
             )
 
-    def remove_shift_plan_item(self) -> None:
-        selected = self.plan_queue.selection()
-        if not selected:
+    def remove_shift_plan_item(self, index: int | None = None) -> None:
+        index = self._selected_plan_index() if index is None else index
+        if index is None or index < 0 or index >= len(self.shift_plan_items):
             return
-        del self.shift_plan_items[int(selected[0])]
+        del self.shift_plan_items[index]
         self.refresh_shift_plan_queue()
-        self.render_shift_plan_cards([])
+        self._refresh_plan_after_change()
 
     def clear_shift_plan(self) -> None:
         self.shift_plan_items.clear()
@@ -874,6 +982,8 @@ class WerkMateApp(tk.Tk):
             child.destroy()
         if not results:
             self.plan_total_label.configure(text="Gesamtzeit: –")
+            self.plan_capacity_bar["value"] = 0
+            self.plan_status_label.configure(text="Noch kein Ablauf berechnet.")
             ttk.Label(
                 self.plan_cards_frame,
                 text="Planpunkte hinzufügen und anschließend die Schicht berechnen.",
@@ -895,6 +1005,21 @@ class WerkMateApp(tk.Tk):
             0,
         )
         free_capacity = max(shift_capacity - productive_seconds, 0)
+        utilization = min((productive_seconds / shift_capacity * 100) if shift_capacity else 0, 100)
+        self.plan_capacity_bar["value"] = utilization
+        overtime_seconds = max(productive_seconds - shift_capacity, 0)
+        if overtime_seconds:
+            status_text = f"⚠ Plan enthält {format_duration(overtime_seconds)} Überzeit."
+        elif free_capacity == 0:
+            status_text = "✓ Schicht vollständig verplant."
+        elif free_capacity <= 5 * 60:
+            status_text = f"✓ Schicht nahezu vollständig geplant · {format_duration(free_capacity)} frei."
+        else:
+            status_text = (
+                f"Noch {format_duration(free_capacity)} produktive Zeit frei – "
+                "ein weiterer Auftrag kann eingeplant werden."
+            )
+        self.plan_status_label.configure(text=status_text)
         self.plan_total_label.configure(
             text=(
                 f"Gesamtablauf {first_start:%H:%M}–{last_end:%H:%M} · "
@@ -938,6 +1063,24 @@ class WerkMateApp(tk.Tk):
                 ),
                 style="Muted.TLabel",
             ).pack(anchor="w", pady=(5, 0))
+            actions = ttk.Frame(card); actions.pack(fill="x", pady=(7, 0))
+            ttk.Button(
+                actions, text="Bearbeiten", command=lambda i=index: self.edit_shift_plan_item(i)
+            ).pack(side="left")
+            ttk.Button(
+                actions, text="Duplizieren", command=lambda i=index: self.duplicate_shift_plan_item(i)
+            ).pack(side="left", padx=4)
+            ttk.Button(
+                actions, text="▲", width=3,
+                command=lambda i=index: self.move_shift_plan_item_at(i, -1),
+            ).pack(side="left")
+            ttk.Button(
+                actions, text="▼", width=3,
+                command=lambda i=index: self.move_shift_plan_item_at(i, 1),
+            ).pack(side="left", padx=4)
+            ttk.Button(
+                actions, text="Entfernen", command=lambda i=index: self.remove_shift_plan_item(i)
+            ).pack(side="right")
 
     def start_first_shift_plan_item(self) -> None:
         self.calculate_shift_plan(persist=not bool(

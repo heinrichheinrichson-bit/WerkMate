@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.25.1 – automatisch fortlaufender und verständlicher Schichtablauf**
+**Version 0.26.0 – übersichtlichere interaktive Schichtablauf-Zentrale**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern

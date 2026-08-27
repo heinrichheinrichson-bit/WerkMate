@@ -525,11 +525,16 @@ class WerkMateService:
         )
         cursor = reported_start
         results: list[dict] = []
+        remaining_work: dict[int, int] = {}
+        remaining_credit: dict[int, int] = {}
         for position, item in enumerate(items, start=1):
             order = self.database.get_order(int(item["order_id"]))
             if order is None:
                 raise ValueError("Ein Auftrag des Schichtplans wurde nicht gefunden.")
             mode = str(item["mode"])
+            order_id = int(order["id"])
+            work_available = remaining_work.setdefault(order_id, int(order["open_quantity"]))
+            credit_available = remaining_credit.setdefault(order_id, int(order["credit_quantity"]))
             seconds_per_piece = int(order["seconds_per_piece"])
             value = item.get("value")
             is_credit = mode.startswith("credit_")
@@ -546,17 +551,17 @@ class WerkMateService:
 
             if mode == "work_fixed":
                 quantity = int(value)
-                if quantity <= 0 or quantity > int(order["open_quantity"]):
-                    raise ValueError("Die feste Arbeitsmenge muss größer als null sein.")
+                if quantity <= 0 or quantity > work_available:
+                    raise ValueError("Die feste Arbeitsmenge überschreitet die noch offene Menge.")
                 productive_seconds = quantity * seconds_per_piece
                 equivalent = Decimal(quantity)
             elif mode == "work_capped":
-                requested = int(value) if value is not None else int(order["open_quantity"])
+                requested = int(value) if value is not None else work_available
                 if requested <= 0:
                     raise ValueError("Die maximale Arbeitsmenge muss größer als null sein.")
                 available = productive_duration_between(cursor, shift.end, shift.breaks)
                 productive_available = max(int(available.total_seconds()), 0)
-                maximum = min(requested, int(order["open_quantity"]))
+                maximum = min(requested, work_available)
                 equivalent = min(
                     Decimal(productive_available) / Decimal(seconds_per_piece),
                     Decimal(maximum),
@@ -568,16 +573,16 @@ class WerkMateService:
                 productive_available = max(int(available.total_seconds()), 0)
                 equivalent = min(
                     Decimal(productive_available) / Decimal(seconds_per_piece),
-                    Decimal(int(order["open_quantity"])),
+                    Decimal(work_available),
                 )
                 quantity = min(
                     productive_available // seconds_per_piece,
-                    int(order["open_quantity"]),
+                    work_available,
                 )
                 productive_seconds = quantity * seconds_per_piece
             elif mode == "credit_quantity":
                 quantity = int(value)
-                if quantity <= 0 or quantity > int(order["credit_quantity"]):
+                if quantity <= 0 or quantity > credit_available:
                     raise ValueError("Die Guthabenstückzahl muss größer als null sein.")
                 productive_seconds = quantity * seconds_per_piece
                 equivalent = Decimal(quantity)
@@ -585,11 +590,11 @@ class WerkMateService:
                 productive_seconds = int(value)
                 if productive_seconds <= 0:
                     raise ValueError("Die Guthabenzeit muss größer als null sein.")
-                if productive_seconds > int(order["credit_quantity"]) * seconds_per_piece:
+                if productive_seconds > credit_available * seconds_per_piece:
                     raise ValueError("Die Guthabenzeit überschreitet das verfügbare Guthaben.")
                 equivalent = Decimal(productive_seconds) / Decimal(seconds_per_piece)
                 quantity = int(equivalent.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-                quantity = max(1, min(quantity, int(order["credit_quantity"])))
+                quantity = max(1, min(quantity, credit_available))
             else:
                 raise ValueError("Unbekannte Planungsart.")
 
@@ -611,8 +616,12 @@ class WerkMateService:
                 "productive_seconds": productive_seconds,
                 "overtime_seconds": max(int((end - shift.end).total_seconds()), 0),
                 "shift_end": shift.end,
-                "remaining_after_plan": max(int(order["open_quantity"]) - quantity, 0)
-                if not is_credit else int(order["credit_quantity"]) - quantity,
+                "remaining_after_plan": max(work_available - quantity, 0)
+                if not is_credit else max(credit_available - quantity, 0),
             })
+            if is_credit:
+                remaining_credit[order_id] = max(credit_available - quantity, 0)
+            else:
+                remaining_work[order_id] = max(work_available - quantity, 0)
             cursor = end
         return results

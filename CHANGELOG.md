@@ -4,6 +4,28 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.26.0] - 2026-08-27
+
+### Neu
+
+- Auslastungsbalken für die produktive Schichtkapazität
+- Verständlicher Status: Schicht gefüllt, nahezu gefüllt, freie Zeit oder Überzeit
+- Direkte Kartenaktionen für Bearbeiten, Duplizieren, Verschieben und Entfernen
+- Bearbeitungsdialog für Planungsart, Menge/Minuten und abweichende Startzeit
+- Jede Änderung an Reihenfolge, Menge oder Startzeit berechnet den Ablauf sofort neu
+- Schutz vor mehrfacher Überplanung derselben offenen Auftragsmenge
+
+### Verbessert
+
+- Gesamtübersicht zeigt geplante, verfügbare und freie produktive Zeit getrennt
+- Leerer Plan wird nach dem letzten Entfernen sauber verworfen
+- Folgezeiten bleiben nach Drag-and-drop und Pfeilverschiebung unmittelbar aktuell
+
+### Qualität
+
+- Test gegen doppelte Einplanung über die offene Auftragsmenge hinaus
+- GUI-Test für Zeitkette, Auslastung, Restzeit-Status und Kartenaktionen
+
 ## [0.25.1] - 2026-08-27
 
 ### Verbessert
