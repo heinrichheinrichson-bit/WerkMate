@@ -14,6 +14,8 @@ aber nicht gestartet.
 - automatische Berücksichtigung der festen Pause
 - ganze und rechnerische Stückzahl bis Schichtende
 - Reststücke, Endzeit und Gesamtzeit
+- optional eine zweite Arbeit für die nach Arbeit 1 verbleibende Schichtzeit
+- Soll-Zeitspanne und benötigte Stückzahl für beide Arbeiten
 
 Es gibt zunächst keine Aufträge, Historie, Rückmeldung, Guthaben oder Planung in
 der sichtbaren Oberfläche. Erweiterungen folgen erst, wenn dieser Rechner im

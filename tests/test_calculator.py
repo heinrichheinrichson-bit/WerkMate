@@ -32,3 +32,27 @@ def test_simple_calculator_derives_piece_time_from_total_time() -> None:
     assert result.seconds_per_piece == 20 * 60
     assert result.complete_pieces == 23
     assert result.remaining_pieces == 25
+
+
+def test_two_jobs_fill_the_shift_in_sequence() -> None:
+    shift = standard_shift(1, datetime(2026, 8, 27).date())
+    first = calculate_shift_requirement(
+        total_quantity=12,
+        seconds_per_piece=20 * 60,
+        start=shift.start,
+        shift_end=shift.end,
+        breaks=shift.breaks,
+    )
+    second = calculate_shift_requirement(
+        total_quantity=40,
+        seconds_per_piece=15 * 60,
+        start=first.planned_end,
+        shift_end=shift.end,
+        breaks=shift.breaks,
+    )
+
+    assert first.planned_end == datetime(2026, 8, 27, 10, 3)
+    assert second.complete_pieces == 14
+    assert second.exact_pieces == Decimal("14.8")
+    assert second.remaining_pieces == 26
+    assert second.planned_end == datetime(2026, 8, 27, 13, 33)
