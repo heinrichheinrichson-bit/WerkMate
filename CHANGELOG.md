@@ -4,6 +4,27 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.27.0] - 2026-08-27
+
+### Neu
+
+- Tagesmonitor im Reiter „Laufender Auftrag“
+- Startzeit, geplantes Ende und Fortschritt als große Kennzahlen auf den ersten Blick
+- Bereich „Als Nächstes“ mit Folgeauftrag, geplantem Start, Ende und Stückzahl
+- Vollständiger aktueller Tagesablauf als verbundene, scrollbar angeordnete Auftragskarten
+- Aktiver und geplanter Auftrag werden im Ablauf eindeutig unterschieden
+- Tagesablauf ist auch vor dem Start des ersten Planpunkts sichtbar
+
+### Verbessert
+
+- Rückmeldebereich steht optisch nach den zentralen Zeit- und Ablaufdaten
+- Folgezeiten werden aus dem aktuellen Zielende und dem gespeicherten Schichtplan berechnet
+- Überholte manuelle Startvorgaben vor dem aktuellen Ende blockieren die Vorschau nicht
+
+### Qualität
+
+- GUI-Ablauftest mit aktuellem Auftrag `05:45–06:45` und Folgeauftrag ab `06:45`
+
 ## [0.26.0] - 2026-08-27
 
 ### Neu

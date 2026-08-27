@@ -162,7 +162,12 @@ class WerkMateApp(tk.Tk):
         )
         self.active_title.pack(anchor="w")
         self.active_details = ttk.Label(self.dashboard_tab, text="", style="Muted.TLabel")
-        self.active_details.pack(anchor="w", pady=(4, 24))
+        self.active_details.pack(anchor="w", pady=(4, 12))
+        monitor = ttk.LabelFrame(self.dashboard_tab, text="Heute im Blick", padding=12)
+        monitor.pack(fill="x", pady=(0, 12))
+        self.dashboard_start_value = self._dashboard_metric(monitor, 0, "STARTZEIT")
+        self.dashboard_end_value = self._dashboard_metric(monitor, 1, "GEPLANTES ENDE")
+        self.dashboard_progress_value = self._dashboard_metric(monitor, 2, "FORTSCHRITT")
         self.countdown_caption = ttk.Label(self.dashboard_tab, text="")
         self.countdown_caption.pack()
         self.countdown = ttk.Label(self.dashboard_tab, text="--:--:--", style="Countdown.TLabel")
@@ -188,6 +193,43 @@ class WerkMateApp(tk.Tk):
             command=self.cancel_active,
         )
         self.cancel_work_button.pack()
+
+        next_frame = ttk.LabelFrame(self.dashboard_tab, text="Als Nächstes", padding=10)
+        next_frame.pack(fill="x", pady=(14, 8))
+        self.dashboard_next_title = ttk.Label(
+            next_frame, text="Kein weiterer Auftrag geplant", font=("Segoe UI", 11, "bold")
+        )
+        self.dashboard_next_title.pack(anchor="w")
+        self.dashboard_next_details = ttk.Label(next_frame, text="", style="Muted.TLabel")
+        self.dashboard_next_details.pack(anchor="w", pady=(3, 0))
+
+        timeline = ttk.LabelFrame(self.dashboard_tab, text="Heutiger Arbeitsablauf", padding=8)
+        timeline.pack(fill="both", expand=True, pady=(0, 8))
+        self.dashboard_timeline_canvas = tk.Canvas(
+            timeline, height=190, highlightthickness=0, bg="#f0f0f0"
+        )
+        timeline_scroll = ttk.Scrollbar(
+            timeline, orient="vertical", command=self.dashboard_timeline_canvas.yview
+        )
+        self.dashboard_timeline_canvas.configure(yscrollcommand=timeline_scroll.set)
+        timeline_scroll.pack(side="right", fill="y")
+        self.dashboard_timeline_canvas.pack(side="left", fill="both", expand=True)
+        self.dashboard_timeline_frame = ttk.Frame(self.dashboard_timeline_canvas)
+        self._dashboard_timeline_window = self.dashboard_timeline_canvas.create_window(
+            (0, 0), window=self.dashboard_timeline_frame, anchor="nw"
+        )
+        self.dashboard_timeline_frame.bind(
+            "<Configure>",
+            lambda _event: self.dashboard_timeline_canvas.configure(
+                scrollregion=self.dashboard_timeline_canvas.bbox("all")
+            ),
+        )
+        self.dashboard_timeline_canvas.bind(
+            "<Configure>",
+            lambda event: self.dashboard_timeline_canvas.itemconfigure(
+                self._dashboard_timeline_window, width=event.width
+            ),
+        )
 
         finish = ttk.LabelFrame(self.dashboard_tab, text="Arbeitseinsatz rückmelden", padding=14)
         finish.pack(fill="x", pady=(20, 0))
@@ -223,6 +265,16 @@ class WerkMateApp(tk.Tk):
             row=2, column=4, columnspan=3, sticky="ew", pady=(16, 0), padx=(6, 0)
         )
         finish.columnconfigure(5, weight=1)
+
+    @staticmethod
+    def _dashboard_metric(parent, column: int, caption: str) -> ttk.Label:
+        cell = ttk.Frame(parent)
+        cell.grid(row=0, column=column, sticky="nsew", padx=10)
+        ttk.Label(cell, text=caption, style="Muted.TLabel").pack(anchor="w")
+        value = ttk.Label(cell, text="–", font=("Segoe UI", 16, "bold"))
+        value.pack(anchor="w", pady=(3, 0))
+        parent.columnconfigure(column, weight=1)
+        return value
 
     def _build_analytics(self) -> None:
         header = ttk.Frame(self.analytics_tab)
@@ -2056,6 +2108,114 @@ class WerkMateApp(tk.Tk):
                 )
             )
 
+    def _dashboard_future_results(self, status: dict | None) -> list[dict]:
+        plan = self.database.active_shift_plan()
+        if plan is None:
+            return []
+        items = []
+        for saved in plan["items"]:
+            if saved["status"] != "offen":
+                continue
+            order = self.database.get_order(int(saved["order_id"]))
+            if order is None:
+                continue
+            override = (
+                datetime.fromisoformat(saved["start_override"])
+                if saved.get("start_override") else None
+            )
+            items.append({
+                "order_id": int(saved["order_id"]), "mode": saved["mode"],
+                "value": saved["value"], "start_override": override,
+            })
+        if not items:
+            return []
+        start = (
+            datetime.fromisoformat(status["target_end"])
+            if status is not None else datetime.fromisoformat(plan["reported_start"])
+        )
+        for item in items:
+            if isinstance(item.get("start_override"), datetime) and item["start_override"] < start:
+                item["start_override"] = None
+        custom_end = (
+            datetime.fromisoformat(plan["custom_shift_end"])
+            if plan.get("custom_shift_end") else None
+        )
+        try:
+            return self.service.plan_sequence(
+                items=items, reported_start=start, shift_number=int(plan["shift_number"]),
+                custom_shift_end=custom_end,
+            )
+        except ValueError:
+            return []
+
+    def _render_dashboard_timeline(self, status: dict | None) -> None:
+        for child in self.dashboard_timeline_frame.winfo_children():
+            child.destroy()
+        rows: list[dict] = []
+        if status is not None:
+            rows.append({
+                "order_number": status["order_number"], "die_number": status["die_number"],
+                "operation": status["operation"],
+                "planned_start": datetime.fromisoformat(status["reported_started_at"]),
+                "planned_end": datetime.fromisoformat(status["target_end"]),
+                "quantity": int(status["quantity_to_process"]), "timeline_state": "AKTIV",
+            })
+        future = self._dashboard_future_results(status)
+        for item in future:
+            rows.append({**item, "timeline_state": "GEPLANT"})
+
+        if future:
+            next_item = future[0]
+            self.dashboard_next_title.configure(
+                text=f"{next_item['order_number']} · Ges. {next_item['die_number']} · {next_item['operation']}"
+            )
+            self.dashboard_next_details.configure(
+                text=(
+                    f"Geplanter Start {next_item['planned_start']:%H:%M} · "
+                    f"voraussichtliches Ende {next_item['planned_end']:%H:%M} · "
+                    f"{next_item['quantity']} Stück"
+                )
+            )
+        else:
+            self.dashboard_next_title.configure(text="Kein weiterer Auftrag geplant")
+            self.dashboard_next_details.configure(
+                text="Im Schichtplan kann der nächste Auftrag ergänzt werden."
+            )
+
+        if not rows:
+            ttk.Label(
+                self.dashboard_timeline_frame,
+                text="Noch kein Tagesablauf vorhanden. Im Schichtplan Aufträge hinzufügen.",
+                style="Muted.TLabel",
+            ).pack(anchor="w", padx=10, pady=12)
+            return
+
+        for index, item in enumerate(rows):
+            row = ttk.Frame(self.dashboard_timeline_frame)
+            row.pack(fill="x", pady=3, padx=4)
+            rail = tk.Canvas(row, width=48, height=62, highlightthickness=0, bg="#f0f0f0")
+            rail.pack(side="left", fill="y")
+            color = "#2f6fed" if item["timeline_state"] == "AKTIV" else "#8793a5"
+            rail.create_oval(8, 6, 40, 38, fill=color, outline="")
+            rail.create_text(24, 22, text=str(index + 1), fill="white", font=("Segoe UI", 9, "bold"))
+            if index < len(rows) - 1:
+                rail.create_line(24, 38, 24, 62, fill=color, width=3)
+            card = ttk.LabelFrame(row, padding=8)
+            card.pack(side="left", fill="x", expand=True)
+            header = ttk.Frame(card); header.pack(fill="x")
+            ttk.Label(
+                header,
+                text=f"{item['timeline_state']} · {item['order_number']} · {item['die_number']}/{item['operation']}",
+                font=("Segoe UI", 10, "bold"),
+            ).pack(side="left")
+            ttk.Label(
+                header, text=f"{item['planned_start']:%H:%M} → {item['planned_end']:%H:%M}",
+                font=("Segoe UI", 10, "bold"),
+            ).pack(side="right")
+            ttk.Label(
+                card, text=f"{item['quantity']} Stück", style="Muted.TLabel"
+            ).pack(anchor="w", pady=(3, 0))
+
     def refresh_dashboard(self) -> None:
         status = self.service.status()
         active = status is not None
@@ -2072,10 +2232,14 @@ class WerkMateApp(tk.Tk):
             self.countdown.configure(text="--:--:--", style="Countdown.TLabel")
             self.target_label.configure(text="")
             self.work_progress.configure(value=0)
+            self.dashboard_start_value.configure(text="–")
+            self.dashboard_end_value.configure(text="–")
+            self.dashboard_progress_value.configure(text="0 %")
             self.extend_work_button.configure(state="disabled")
             self.forecast_label.configure(text="")
             self.order_remaining_label.configure(text="")
             self.cancel_work_button.configure(state="disabled")
+            self._render_dashboard_timeline(None)
             return
         self.cancel_work_button.configure(state="normal")
         self.extend_work_button.configure(state="normal")
@@ -2119,7 +2283,11 @@ class WerkMateApp(tk.Tk):
         target = datetime.fromisoformat(status["target_end"])
         total_clock_seconds = max((target - started).total_seconds(), 1)
         elapsed_clock_seconds = max((datetime.now().astimezone().replace(tzinfo=None) - started).total_seconds(), 0)
-        self.work_progress.configure(value=min(elapsed_clock_seconds / total_clock_seconds * 100, 100))
+        progress = min(elapsed_clock_seconds / total_clock_seconds * 100, 100)
+        self.work_progress.configure(value=progress)
+        self.dashboard_start_value.configure(text=started.strftime("%H:%M"))
+        self.dashboard_end_value.configure(text=target.strftime("%H:%M"))
+        self.dashboard_progress_value.configure(text=f"{progress:.0f} %")
         extensions = self.database.session_extensions(int(status["id"]))
         self.target_label.configure(
             text=(
@@ -2163,8 +2331,9 @@ class WerkMateApp(tk.Tk):
             self.order_remaining_label.configure(
                 text=f"Gesamtauftrag noch nicht rückgemeldet: {status['order_open_quantity']} Stück · "
                      f"{remaining} Vorgabezeit\n"
-                     f"Davon außerhalb der aktuellen Schichtkapazität: {extra}"
+                f"Davon außerhalb der aktuellen Schichtkapazität: {extra}"
             )
+        self._render_dashboard_timeline(status)
         if overdue and self.notified_session_id != status["id"]:
             self.notified_session_id = int(status["id"])
             self.bell()
