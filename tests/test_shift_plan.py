@@ -34,6 +34,84 @@ def test_fixed_first_order_then_fill_remaining_shift(tmp_path) -> None:
     assert plan[1]["overtime_seconds"] == 0
 
 
+def test_capped_order_plans_only_required_pieces_for_current_shift(tmp_path) -> None:
+    database = WerkMateDatabase(tmp_path / "db.sqlite3")
+    service = WerkMateService(database)
+    order_id = service.create_order(
+        order_number="FA-48", die_number="8720", operation="FP",
+        original_quantity=48, seconds_per_piece=20 * 60,
+    )
+    plan = service.plan_sequence(
+        items=[{"order_id": order_id, "mode": "work_capped", "value": 48}],
+        reported_start=datetime(2026, 8, 26, 5, 45), shift_number=1,
+    )
+    assert plan[0]["piece_equivalent"] == Decimal("23.1")
+    assert plan[0]["quantity"] == 23
+    assert plan[0]["remaining_after_plan"] == 25
+    assert plan[0]["planned_end"] == datetime(2026, 8, 26, 13, 43)
+    assert plan[0]["overtime_seconds"] == 0
+
+
+def test_capped_order_uses_explicit_overtime_shift_end(tmp_path) -> None:
+    database = WerkMateDatabase(tmp_path / "db.sqlite3")
+    service = WerkMateService(database)
+    order_id = service.create_order(
+        order_number="FA-LANG", die_number="8720", operation="FP",
+        original_quantity=48, seconds_per_piece=20 * 60,
+    )
+    plan = service.plan_sequence(
+        items=[{"order_id": order_id, "mode": "work_capped", "value": 48}],
+        reported_start=datetime(2026, 8, 26, 5, 45), shift_number=1,
+        custom_shift_end=datetime(2026, 8, 26, 15, 45),
+    )
+    assert plan[0]["piece_equivalent"] == Decimal("29.1")
+    assert plan[0]["quantity"] == 29
+    assert plan[0]["remaining_after_plan"] == 19
+    assert plan[0]["overtime_seconds"] == 0
+
+
+def test_custom_shift_end_is_persisted_with_plan(tmp_path) -> None:
+    path = tmp_path / "db.sqlite3"
+    database = WerkMateDatabase(path)
+    order_id = database.create_order(
+        order_number="FA-PLANENDE", die_number="8720", operation="FP",
+        original_quantity=48, seconds_per_piece=20 * 60,
+    )
+    custom_end = datetime(2026, 8, 26, 15, 45)
+    database.save_shift_plan(
+        reported_start=datetime(2026, 8, 26, 5, 45), shift_number=1,
+        custom_shift_end=custom_end,
+        items=[{"order_id": order_id, "mode": "work_capped", "value": 48}],
+    )
+    reopened = WerkMateDatabase(path).active_shift_plan()
+    assert reopened is not None
+    assert reopened["custom_shift_end"] == custom_end.isoformat()
+
+
+def test_capped_small_order_leaves_capacity_for_following_order(tmp_path) -> None:
+    database = WerkMateDatabase(tmp_path / "db.sqlite3")
+    service = WerkMateService(database)
+    first = service.create_order(
+        order_number="KLEIN", die_number="8720", operation="FP",
+        original_quantity=12, seconds_per_piece=20 * 60,
+    )
+    second = service.create_order(
+        order_number="WEITER", die_number="4261", operation="FP",
+        original_quantity=40, seconds_per_piece=15 * 60,
+    )
+    plan = service.plan_sequence(
+        items=[
+            {"order_id": first, "mode": "work_capped", "value": 12},
+            {"order_id": second, "mode": "work_capped", "value": 40},
+        ],
+        reported_start=datetime(2026, 8, 26, 5, 45), shift_number=1,
+    )
+    assert plan[0]["quantity"] == 12
+    assert plan[1]["piece_equivalent"] == Decimal("14.8")
+    assert plan[1]["quantity"] == 14
+    assert plan[1]["remaining_after_plan"] == 26
+
+
 def test_credit_block_can_precede_new_work(tmp_path) -> None:
     database = WerkMateDatabase(tmp_path / "db.sqlite3")
     service = WerkMateService(database)

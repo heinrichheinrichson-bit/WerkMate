@@ -267,9 +267,13 @@ class WerkMateService:
         order = self.database.get_order(order_id)
         if order is None:
             raise ValueError("Auftrag nicht gefunden.")
-        shift = with_custom_shift_end(
-            self.shift_for_start(shift_number, reported_start), custom_shift_end
-        )
+        standard = self.shift_for_start(shift_number, reported_start)
+        if custom_shift_end is not None and custom_shift_end <= standard.end:
+            raise ValueError(
+                f"Das abweichende Schichtende muss nach dem normalen Schichtende "
+                f"({standard.end:%H:%M}) liegen."
+            )
+        shift = with_custom_shift_end(standard, custom_shift_end)
         if reported_start >= shift.end:
             raise ValueError("Die Anmeldezeit liegt nicht vor dem Schichtende.")
         available = productive_duration_between(reported_start, shift.end, shift.breaks)
@@ -511,11 +515,14 @@ class WerkMateService:
         items: list[dict],
         reported_start: datetime,
         shift_number: int,
+        custom_shift_end: datetime | None = None,
     ) -> list[dict]:
         """Plant Arbeits- und Guthabenblöcke lückenlos nacheinander."""
         if not items:
             raise ValueError("Der Schichtplan enthält keine Aufträge.")
-        shift = self.shift_for_start(shift_number, reported_start)
+        shift = with_custom_shift_end(
+            self.shift_for_start(shift_number, reported_start), custom_shift_end
+        )
         cursor = reported_start
         results: list[dict] = []
         for position, item in enumerate(items, start=1):
@@ -543,6 +550,19 @@ class WerkMateService:
                     raise ValueError("Die feste Arbeitsmenge muss größer als null sein.")
                 productive_seconds = quantity * seconds_per_piece
                 equivalent = Decimal(quantity)
+            elif mode == "work_capped":
+                requested = int(value) if value is not None else int(order["open_quantity"])
+                if requested <= 0:
+                    raise ValueError("Die maximale Arbeitsmenge muss größer als null sein.")
+                available = productive_duration_between(cursor, shift.end, shift.breaks)
+                productive_available = max(int(available.total_seconds()), 0)
+                maximum = min(requested, int(order["open_quantity"]))
+                equivalent = min(
+                    Decimal(productive_available) / Decimal(seconds_per_piece),
+                    Decimal(maximum),
+                )
+                quantity = min(productive_available // seconds_per_piece, maximum)
+                productive_seconds = quantity * seconds_per_piece
             elif mode == "work_fill":
                 available = productive_duration_between(cursor, shift.end, shift.breaks)
                 productive_available = max(int(available.total_seconds()), 0)
@@ -591,6 +611,8 @@ class WerkMateService:
                 "productive_seconds": productive_seconds,
                 "overtime_seconds": max(int((end - shift.end).total_seconds()), 0),
                 "shift_end": shift.end,
+                "remaining_after_plan": max(int(order["open_quantity"]) - quantity, 0)
+                if not is_credit else int(order["credit_quantity"]) - quantity,
             })
             cursor = end
         return results

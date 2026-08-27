@@ -17,8 +17,8 @@ from .performance import (
     format_quantity_performance,
     format_time_performance,
 )
-from .service import WerkMateService
-from .timecalc import minutes_to_seconds, seconds_to_minutes
+from .service import WerkMateService, with_custom_shift_end
+from .timecalc import minutes_to_seconds, productive_duration_between, seconds_to_minutes
 
 
 def local_now() -> datetime:
@@ -467,6 +467,7 @@ class WerkMateApp(tk.Tk):
     def _build_shift_plan(self) -> None:
         self.shift_plan_items: list[dict] = []
         self.shift_plan_results: list[dict] = []
+        self._plan_date = local_now().date()
         ttk.Label(self.plan_tab, text="Aufträge und Guthaben zusammen planen", style="Title.TLabel").pack(
             anchor="w"
         )
@@ -480,6 +481,10 @@ class WerkMateApp(tk.Tk):
         self.plan_shift = ttk.Combobox(settings, values=("1", "2", "3"), state="readonly", width=6)
         self.plan_shift.set(str(self._current_shift_number(local_now())))
         self.plan_shift.pack(side="left", padx=6)
+        ttk.Label(settings, text="Heutiges Schichtende (optional):").pack(side="left", padx=(14, 0))
+        self.plan_custom_end = ttk.Entry(settings, width=8)
+        self.plan_custom_end.pack(side="left", padx=6)
+        ttk.Label(settings, text="leer = normale Schicht", style="Muted.TLabel").pack(side="left")
 
         add = ttk.LabelFrame(self.plan_tab, text="Planpunkt hinzufügen", padding=10)
         add.pack(fill="x")
@@ -491,7 +496,8 @@ class WerkMateApp(tk.Tk):
         self.plan_mode = ttk.Combobox(
             add,
             values=(
-                "Offene Stück fest",
+                "Bis Schichtende begrenzen",
+                "Feste Stückzahl (Überzeit möglich)",
                 "Restschicht mit Auftrag füllen",
                 "Guthaben nach Stück",
                 "Guthaben nach Minuten",
@@ -499,9 +505,9 @@ class WerkMateApp(tk.Tk):
             state="readonly",
             width=30,
         )
-        self.plan_mode.set("Offene Stück fest")
+        self.plan_mode.set("Bis Schichtende begrenzen")
         self.plan_mode.grid(row=1, column=1, sticky="ew", padx=8)
-        self.plan_value_label = ttk.Label(add, text="Stückzahl (leer = alle offenen):")
+        self.plan_value_label = ttk.Label(add, text="Maximale Stückzahl (leer = alle offenen):")
         self.plan_value_label.grid(row=0, column=2, sticky="w")
         self.plan_value = ttk.Entry(add, width=15)
         self.plan_value.grid(row=1, column=2, sticky="ew", padx=8)
@@ -574,9 +580,13 @@ class WerkMateApp(tk.Tk):
         )
         self.plan_start_button.pack(fill="x", pady=(8, 0))
 
+    def _parsed_plan_start(self) -> datetime:
+        return parse_plan_start(self.plan_start.get(), self._plan_date)
+
     def _update_plan_value_label(self, _event=None) -> None:
         labels = {
-            "Offene Stück fest": "Stückzahl (leer = alle offenen):",
+            "Bis Schichtende begrenzen": "Maximale Stückzahl (leer = alle offenen):",
+            "Feste Stückzahl (Überzeit möglich)": "Feste Stückzahl:",
             "Restschicht mit Auftrag füllen": "Keine Eingabe nötig:",
             "Guthaben nach Stück": "Guthaben-Stückzahl:",
             "Guthaben nach Minuten": "Guthaben-Minuten:",
@@ -601,7 +611,8 @@ class WerkMateApp(tk.Tk):
             messagebox.showerror("Keine Auswahl", "Bitte einen Auftrag auswählen.", parent=self)
             return
         modes = {
-            "Offene Stück fest": "work_fixed",
+            "Bis Schichtende begrenzen": "work_capped",
+            "Feste Stückzahl (Überzeit möglich)": "work_fixed",
             "Restschicht mit Auftrag füllen": "work_fill",
             "Guthaben nach Stück": "credit_quantity",
             "Guthaben nach Minuten": "credit_time",
@@ -612,7 +623,7 @@ class WerkMateApp(tk.Tk):
                 value = None
             elif mode == "credit_time":
                 value = minutes_to_seconds(self.plan_value.get())
-            elif mode == "work_fixed" and not self.plan_value.get().strip():
+            elif mode == "work_capped" and not self.plan_value.get().strip():
                 value = int(order["open_quantity"])
                 if value <= 0:
                     raise ValueError
@@ -690,7 +701,7 @@ class WerkMateApp(tk.Tk):
                 seconds = minutes_to_seconds(entries[4].get())
                 if quantity <= 0:
                     raise ValueError("Die Stückzahl muss größer als null sein.")
-                plan_start = parse_plan_start(self.plan_start.get())
+                plan_start = self._parsed_plan_start()
                 start_override = parse_plan_start_override(entries[5].get(), plan_start) if entries[5].get().strip() else None
                 number = entries[0].get().strip() or f"PLAN-{datetime.now():%Y%m%d-%H%M%S}"
                 if self.database.find_order(number) is not None:
@@ -706,8 +717,8 @@ class WerkMateApp(tk.Tk):
                 )
                 order = self.database.get_order(order_id)
                 self.shift_plan_items.append({
-                    "order_id": order_id, "mode": "work_fixed", "value": quantity,
-                    "label": "Manueller Planauftrag", "order": order,
+                    "order_id": order_id, "mode": "work_capped", "value": quantity,
+                    "label": "Bis Schichtende begrenzen", "order": order,
                     "start_override": start_override,
                 })
             except (ValueError, TypeError) as error:
@@ -734,7 +745,7 @@ class WerkMateApp(tk.Tk):
         if value is None:
             return
         try:
-            plan_start = parse_plan_start(self.plan_start.get())
+            plan_start = self._parsed_plan_start()
             item["start_override"] = parse_plan_start_override(value, plan_start) if value.strip() else None
         except ValueError as error:
             messagebox.showerror("Ungültige Startzeit", str(error), parent=self); return
@@ -810,10 +821,16 @@ class WerkMateApp(tk.Tk):
     def calculate_shift_plan(self, persist: bool = True) -> None:
         self.shift_plan_results = []
         try:
+            reported_start = self._parsed_plan_start()
+            custom_shift_end = (
+                parse_plan_start_override(self.plan_custom_end.get(), reported_start)
+                if self.plan_custom_end.get().strip() else None
+            )
             self.shift_plan_results = self.service.plan_sequence(
                 items=self.shift_plan_items,
-                reported_start=parse_plan_start(self.plan_start.get()),
+                reported_start=reported_start,
                 shift_number=int(self.plan_shift.get()),
+                custom_shift_end=custom_shift_end,
             )
         except (ValueError, TypeError) as error:
             messagebox.showerror("Planung nicht möglich", str(error), parent=self)
@@ -821,9 +838,10 @@ class WerkMateApp(tk.Tk):
         if persist:
             try:
                 self.database.save_shift_plan(
-                    reported_start=parse_plan_start(self.plan_start.get()),
+                    reported_start=reported_start,
                     shift_number=int(self.plan_shift.get()),
                     items=self.shift_plan_items,
+                    custom_shift_end=custom_shift_end,
                 )
                 self.load_persisted_shift_plan(recalculate=False)
                 self.plan_saved_label.configure(text="✓ lokal gespeichert")
@@ -846,11 +864,24 @@ class WerkMateApp(tk.Tk):
         first_start = results[0]["planned_start"]
         last_end = results[-1]["planned_end"]
         productive_seconds = sum(int(item["productive_seconds"]) for item in results)
+        custom_shift_end = (
+            parse_plan_start_override(self.plan_custom_end.get(), first_start)
+            if self.plan_custom_end.get().strip() else None
+        )
+        shift = with_custom_shift_end(
+            self.service.shift_for_start(int(self.plan_shift.get()), first_start), custom_shift_end
+        )
+        shift_capacity = max(
+            int(productive_duration_between(first_start, shift.end, shift.breaks).total_seconds()),
+            0,
+        )
+        free_capacity = max(shift_capacity - productive_seconds, 0)
         self.plan_total_label.configure(
             text=(
                 f"Gesamtablauf {first_start:%H:%M}–{last_end:%H:%M} · "
                 f"{format_duration(int((last_end - first_start).total_seconds()))} Uhrzeit · "
-                f"{format_duration(productive_seconds)} produktive Vorgabezeit"
+                f"{format_duration(productive_seconds)} von {format_duration(shift_capacity)} produktiv · "
+                f"noch {format_duration(free_capacity)} frei"
             )
         )
         for index, item in enumerate(results):
@@ -875,12 +906,16 @@ class WerkMateApp(tk.Tk):
             ).pack(side="right")
             kind = "Guthaben" if item["kind"] == "credit" else "Bearbeitung"
             overtime = f" · {item['overtime_seconds'] // 60} Min. Überzeit" if item["overtime_seconds"] else ""
+            remaining = (
+                f" · danach {item['remaining_after_plan']} Stück offen"
+                if item["kind"] == "work" else ""
+            )
             ttk.Label(
                 card,
                 text=(
                     f"{kind} · {item['quantity']} ganze Stück · "
                     f"{format_piece_equivalent(item['piece_equivalent'])} rechnerisch · "
-                    f"{format_duration(item['productive_seconds'])}{overtime}"
+                    f"{format_duration(item['productive_seconds'])}{remaining}{overtime}"
                 ),
                 style="Muted.TLabel",
             ).pack(anchor="w", pady=(5, 0))
@@ -922,7 +957,8 @@ class WerkMateApp(tk.Tk):
             messagebox.showerror("Start nicht möglich", str(error), parent=self)
             return
         del self.shift_plan_items[0]
-        self._set_entry(self.plan_start, item["planned_end"].strftime("%Y-%m-%d %H:%M"))
+        self._plan_date = item["planned_end"].date()
+        self._set_entry(self.plan_start, item["planned_end"].strftime("%H:%M"))
         self.refresh_shift_plan_queue()
         self.notified_session_id = None
         self.refresh_all()
@@ -932,8 +968,14 @@ class WerkMateApp(tk.Tk):
         plan = self.database.active_shift_plan()
         if plan is None:
             return
+        self._set_entry(
+            self.plan_custom_end,
+            datetime.fromisoformat(plan["custom_shift_end"]).strftime("%H:%M")
+            if plan.get("custom_shift_end") else "",
+        )
         labels = {
-            "work_fixed": "Offene Stück fest",
+            "work_capped": "Bis Schichtende begrenzen",
+            "work_fixed": "Feste Stückzahl (Überzeit möglich)",
             "work_fill": "Restschicht mit Auftrag füllen",
             "credit_quantity": "Guthaben nach Stück",
             "credit_time": "Guthaben nach Minuten",
@@ -962,7 +1004,8 @@ class WerkMateApp(tk.Tk):
             datetime.fromisoformat(active["target_end"])
             if active is not None else datetime.fromisoformat(plan["reported_start"])
         )
-        self._set_entry(self.plan_start, effective_start.strftime("%Y-%m-%d %H:%M"))
+        self._plan_date = effective_start.date()
+        self._set_entry(self.plan_start, effective_start.strftime("%H:%M"))
         self.plan_shift.set(str(plan["shift_number"]))
         self.refresh_shift_plan_queue()
         self.plan_saved_label.configure(text="✓ gespeicherten Plan geladen")

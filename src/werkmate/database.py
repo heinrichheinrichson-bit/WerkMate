@@ -10,7 +10,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 class WerkMateDatabase:
@@ -126,6 +126,7 @@ class WerkMateDatabase:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     reported_start TEXT NOT NULL,
                     shift_number INTEGER NOT NULL CHECK(shift_number BETWEEN 1 AND 3),
+                    custom_shift_end TEXT,
                     status TEXT NOT NULL DEFAULT 'aktiv',
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
@@ -209,6 +210,11 @@ class WerkMateDatabase:
             }
             if "start_override" not in plan_columns:
                 connection.execute("ALTER TABLE shift_plan_items ADD COLUMN start_override TEXT")
+            shift_plan_columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(shift_plans)").fetchall()
+            }
+            if "custom_shift_end" not in shift_plan_columns:
+                connection.execute("ALTER TABLE shift_plans ADD COLUMN custom_shift_end TEXT")
             connection.execute(
                 "INSERT OR REPLACE INTO metadata(key, value) VALUES('schema_version', ?)",
                 (str(SCHEMA_VERSION),),
@@ -267,7 +273,8 @@ class WerkMateDatabase:
                 )
 
     def save_shift_plan(
-        self, *, reported_start: datetime, shift_number: int, items: list[dict[str, Any]]
+        self, *, reported_start: datetime, shift_number: int, items: list[dict[str, Any]],
+        custom_shift_end: datetime | None = None,
     ) -> int:
         if not items:
             raise ValueError("Der Schichtplan enthält keine Aufträge.")
@@ -306,8 +313,8 @@ class WerkMateDatabase:
                         ),
                     )
                 connection.execute(
-                    "UPDATE shift_plans SET shift_number = ?, updated_at = ? WHERE id = ?",
-                    (shift_number, now, plan_id),
+                    "UPDATE shift_plans SET shift_number = ?, custom_shift_end = ?, updated_at = ? WHERE id = ?",
+                    (shift_number, custom_shift_end.isoformat() if custom_shift_end else None, now, plan_id),
                 )
                 return plan_id
             connection.execute(
@@ -315,9 +322,10 @@ class WerkMateDatabase:
                 (now,),
             )
             cursor = connection.execute(
-                "INSERT INTO shift_plans(reported_start, shift_number, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?)",
-                (reported_start.isoformat(), shift_number, now, now),
+                "INSERT INTO shift_plans(reported_start, shift_number, custom_shift_end, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (reported_start.isoformat(), shift_number,
+                 custom_shift_end.isoformat() if custom_shift_end else None, now, now),
             )
             plan_id = int(cursor.lastrowid)
             for position, item in enumerate(items, start=1):

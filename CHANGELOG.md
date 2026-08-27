@@ -4,6 +4,24 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.25.0] - 2026-08-27
+
+### Neu
+
+- Standardplanung begrenzt jeden Auftrag auf die verbleibende produktive Schichtzeit
+- Anzeige der für heute vollständig möglichen und rechnerischen Stückzahl
+- Anzeige der nach dem Tagesplan weiterhin offenen Auftragsmenge
+- Anzeige von belegter, verfügbarer und noch freier produktiver Schichtzeit
+- Optionales heutiges Schichtende für bewusst geplante Überstunden
+- Abweichendes Schichtende wird mit dem Schichtplan lokal gespeichert
+- Bewusste feste Stückplanung über das Schichtende hinaus bleibt als eigene Planungsart erhalten
+- Automatische Datenbankmigration auf Schema-Version 11
+
+### Qualität
+
+- Tests für 48 Stück à 20 Minuten: normal 23 Stück, mit verlängertem Ende 29 Stück
+- Tests für Restkapazität, Folgeauftrag und gespeichertes abweichendes Schichtende
+
 ## [0.24.1] - 2026-08-26
 
 ### Verbessert
