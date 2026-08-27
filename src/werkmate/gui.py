@@ -692,16 +692,22 @@ class WerkMateApp(tk.Tk):
         self.plan_start.insert(0, local_now().strftime("%H:%M"))
         self.plan_start.pack(side="left", padx=(6, 16))
         ttk.Label(settings, text="Schicht:").pack(side="left")
-        self.plan_shift = ttk.Combobox(settings, values=("1", "2", "3"), state="readonly", width=6)
-        self.plan_shift.set(str(self._current_shift_number(local_now())))
+        self._plan_shift_options = self._shift_option_labels()
+        self.plan_shift = ttk.Combobox(
+            settings, values=tuple(self._plan_shift_options.values()), state="readonly", width=32
+        )
+        self.plan_shift.set(self._plan_shift_options[self._current_shift_number(local_now())])
         self.plan_shift.pack(side="left", padx=6)
         ttk.Label(settings, text="Länger arbeiten bis (optional):").pack(side="left", padx=(14, 0))
         self.plan_custom_end = ttk.Entry(settings, width=8)
         self.plan_custom_end.pack(side="left", padx=6)
         ttk.Label(settings, text="nur HH:MM · leer = normales Schichtende", style="Muted.TLabel").pack(side="left")
+        self.plan_date_label = ttk.Label(settings, text="", foreground="#175cd3")
+        self.plan_date_label.pack(side="right", padx=(10, 0))
         self.plan_start.bind("<Return>", self._plan_setting_changed)
         self.plan_custom_end.bind("<Return>", self._plan_setting_changed)
-        self.plan_shift.bind("<<ComboboxSelected>>", self._plan_setting_changed)
+        self.plan_shift.bind("<<ComboboxSelected>>", self._plan_shift_selected)
+        self._update_plan_date_label()
         plan_notice = ttk.Label(
             self.plan_tab,
             text=(
@@ -829,7 +835,63 @@ class WerkMateApp(tk.Tk):
     def _parsed_plan_start(self) -> datetime:
         return parse_plan_start(self.plan_start.get(), self._plan_date)
 
+    def _shift_option_labels(self) -> dict[int, str]:
+        names = {1: "Frühschicht", 2: "Spätschicht", 3: "Nachtschicht"}
+        return {
+            int(item["shift_number"]): (
+                f"{names.get(int(item['shift_number']), 'Schicht')} · "
+                f"{item['start_time']}–{item['end_time']}"
+            )
+            for item in self.database.shift_settings()
+        }
+
+    def _plan_shift_number(self) -> int:
+        selected = self.plan_shift.get()
+        for number, label in self._plan_shift_options.items():
+            if selected == label:
+                return number
+        try:
+            return int(selected.split("·", 1)[0].strip())
+        except (ValueError, IndexError) as error:
+            raise ValueError("Bitte eine Schicht auswählen.") from error
+
+    def _update_plan_date_label(self) -> None:
+        today = local_now().date()
+        if self._plan_date == today:
+            prefix = "heute"
+        elif self._plan_date == today + timedelta(days=1):
+            prefix = "morgen"
+        else:
+            prefix = self._plan_date.strftime("%d.%m.%Y")
+        self.plan_date_label.configure(text=f"Planung: {prefix}")
+
+    def _plan_shift_selected(self, _event=None) -> None:
+        number = self._plan_shift_number()
+        setting = next(
+            item for item in self.database.shift_settings()
+            if int(item["shift_number"]) == number
+        )
+        now = local_now()
+        start_clock = datetime.strptime(setting["start_time"], "%H:%M").time()
+        candidate = datetime.combine(now.date(), start_clock)
+        if candidate < now:
+            candidate += timedelta(days=1)
+        self._plan_date = candidate.date()
+        self._set_entry(self.plan_start, candidate.strftime("%H:%M"))
+        self._update_plan_date_label()
+        self._plan_setting_changed()
+
     def _plan_setting_changed(self, _event=None) -> None:
+        if _event is not None and getattr(_event, "widget", None) is self.plan_start:
+            try:
+                clock = datetime.strptime(self.plan_start.get().strip(), "%H:%M").time()
+                candidate = datetime.combine(local_now().date(), clock)
+                if candidate < local_now():
+                    candidate += timedelta(days=1)
+                self._plan_date = candidate.date()
+                self._update_plan_date_label()
+            except ValueError:
+                pass
         if self.shift_plan_items:
             self.calculate_shift_plan()
 
@@ -1191,7 +1253,7 @@ class WerkMateApp(tk.Tk):
             self.shift_plan_results = self.service.plan_sequence(
                 items=self.shift_plan_items,
                 reported_start=reported_start,
-                shift_number=int(self.plan_shift.get()),
+                shift_number=self._plan_shift_number(),
                 custom_shift_end=custom_shift_end,
             )
         except (ValueError, TypeError) as error:
@@ -1201,7 +1263,7 @@ class WerkMateApp(tk.Tk):
             try:
                 self.database.save_shift_plan(
                     reported_start=reported_start,
-                    shift_number=int(self.plan_shift.get()),
+                    shift_number=self._plan_shift_number(),
                     items=self.shift_plan_items,
                     custom_shift_end=custom_shift_end,
                 )
@@ -1234,7 +1296,7 @@ class WerkMateApp(tk.Tk):
             if self.plan_custom_end.get().strip() else None
         )
         shift = with_custom_shift_end(
-            self.service.shift_for_start(int(self.plan_shift.get()), first_start), custom_shift_end
+            self.service.shift_for_start(self._plan_shift_number(), first_start), custom_shift_end
         )
         shift_capacity = max(
             int(productive_duration_between(first_start, shift.end, shift.breaks).total_seconds()),
@@ -1374,18 +1436,18 @@ class WerkMateApp(tk.Tk):
                 if item["mode"] == "credit_time":
                     self.service.start_credit(
                         order_id=item["order_id"], reported_start=item["planned_start"],
-                        shift_number=int(self.plan_shift.get()),
+                        shift_number=self._plan_shift_number(),
                         productive_seconds=item["productive_seconds"],
                     )
                 else:
                     self.service.start_credit(
                         order_id=item["order_id"], reported_start=item["planned_start"],
-                        shift_number=int(self.plan_shift.get()), quantity=item["quantity"],
+                        shift_number=self._plan_shift_number(), quantity=item["quantity"],
                     )
             else:
                 session_id = self.service.start_work(
                     order_id=item["order_id"], quantity=item["quantity"],
-                    reported_start=item["planned_start"], shift_number=int(self.plan_shift.get()),
+                    reported_start=item["planned_start"], shift_number=self._plan_shift_number(),
                 )
             if item["kind"] == "credit":
                 session_id = int(self.database.active_session()["id"])
@@ -1445,7 +1507,8 @@ class WerkMateApp(tk.Tk):
         )
         self._plan_date = effective_start.date()
         self._set_entry(self.plan_start, effective_start.strftime("%H:%M"))
-        self.plan_shift.set(str(plan["shift_number"]))
+        self.plan_shift.set(self._plan_shift_options[int(plan["shift_number"])])
+        self._update_plan_date_label()
         self.refresh_shift_plan_queue()
         self.plan_saved_label.configure(text="✓ gespeicherten Plan geladen")
         self.plan_start_button.configure(state="disabled" if active is not None else "normal")

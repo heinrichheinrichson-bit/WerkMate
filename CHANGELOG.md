@@ -4,6 +4,29 @@ Alle wesentlichen Änderungen werden in dieser Datei dokumentiert.
 
 ## [Unveröffentlicht]
 
+## [0.31.1] - 2026-08-27
+
+### Behoben
+
+- Eine zukünftige Nachtschicht kann unabhängig von der aktuellen Uhrzeit geplant werden
+- Schichtauswahl zeigt Namen und vollständige Zeitspanne statt nur 1, 2 oder 3
+- Auswahl einer Schicht setzt den Beginn auf den nächsten passenden Schichtstart
+- Für Frühschichten nach Tagesende wird automatisch der nächste Kalendertag verwendet
+- Planung zeigt sichtbar „heute“, „morgen“ oder das konkrete Datum
+- Planbeginn außerhalb der gewählten Schicht erzeugt eine verständliche Fehlermeldung
+- Begrenzte Aufträge am oder nach Schichtende werden nicht mehr als null Stück und vollständig verplant dargestellt
+
+### Stabilisierung
+
+- Neue Funktionen werden vorerst eingefroren
+- Verbindlicher Kernablauf und Prüfreihenfolge in `docs/STABILISIERUNGSPLAN.md` festgehalten
+
+### Qualität
+
+- Reproduktionstest für Nachtschicht `21:45–05:45`
+- Regressionstest gegen die falsche Kombination `21:45` mit Spätschicht
+- Alle 85 automatisierten Tests bestanden
+
 ## [0.31.0] - 2026-08-27
 
 ### Vereinfachte Auftragsbedienung

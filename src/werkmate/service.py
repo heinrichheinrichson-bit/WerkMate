@@ -523,6 +523,12 @@ class WerkMateService:
         shift = with_custom_shift_end(
             self.shift_for_start(shift_number, reported_start), custom_shift_end
         )
+        if reported_start < shift.start or reported_start >= shift.end:
+            raise ValueError(
+                f"Der Planbeginn {reported_start:%H:%M} liegt außerhalb der gewählten "
+                f"Schicht ({shift.start:%H:%M}–{shift.end:%H:%M}). Bitte Schicht oder "
+                "Planbeginn korrigieren."
+            )
         cursor = reported_start
         results: list[dict] = []
         remaining_work: dict[int, int] = {}
@@ -548,6 +554,12 @@ class WerkMateService:
                         "des vorherigen Auftrags."
                     )
                 cursor = override
+
+            if mode in ("work_capped", "work_fill") and cursor >= shift.end:
+                raise ValueError(
+                    f"Planpunkt {position} beginnt erst um {cursor:%H:%M} und damit am oder "
+                    f"nach dem Schichtende {shift.end:%H:%M}. Bitte Startzeit oder Schicht prüfen."
+                )
 
             if mode == "work_fixed":
                 quantity = int(value)

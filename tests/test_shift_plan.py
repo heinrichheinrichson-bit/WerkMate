@@ -1,6 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
 
+import pytest
+
 from werkmate.database import WerkMateDatabase
 from werkmate.service import WerkMateService
 
@@ -32,6 +34,42 @@ def test_fixed_first_order_then_fill_remaining_shift(tmp_path) -> None:
     assert plan[1]["quantity"] == 14
     assert plan[1]["planned_end"] == datetime(2026, 8, 26, 13, 33)
     assert plan[1]["overtime_seconds"] == 0
+
+
+def test_future_night_shift_is_planned_independently_of_current_time(tmp_path) -> None:
+    database = WerkMateDatabase(tmp_path / "db.sqlite3")
+    service = WerkMateService(database)
+    order_id = service.create_order(
+        order_number="NACHT-4555", die_number="4555", operation="ZP",
+        original_quantity=10, seconds_per_piece=20 * 60,
+    )
+
+    plan = service.plan_sequence(
+        items=[{"order_id": order_id, "mode": "work_capped", "value": 10}],
+        reported_start=datetime(2026, 8, 27, 21, 45),
+        shift_number=3,
+    )
+
+    assert plan[0]["quantity"] == 10
+    assert plan[0]["planned_start"] == datetime(2026, 8, 27, 21, 45)
+    assert plan[0]["planned_end"] == datetime(2026, 8, 28, 1, 5)
+    assert plan[0]["shift_end"] == datetime(2026, 8, 28, 5, 45)
+
+
+def test_plan_start_outside_selected_shift_is_rejected(tmp_path) -> None:
+    database = WerkMateDatabase(tmp_path / "db.sqlite3")
+    service = WerkMateService(database)
+    order_id = service.create_order(
+        order_number="NACHT-4555", die_number="4555", operation="ZP",
+        original_quantity=10, seconds_per_piece=20 * 60,
+    )
+
+    with pytest.raises(ValueError, match="außerhalb der gewählten Schicht"):
+        service.plan_sequence(
+            items=[{"order_id": order_id, "mode": "work_capped", "value": 10}],
+            reported_start=datetime(2026, 8, 27, 21, 45),
+            shift_number=2,
+        )
 
 
 def test_capped_order_plans_only_required_pieces_for_current_shift(tmp_path) -> None:

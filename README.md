@@ -7,7 +7,7 @@ Historie bleiben lokal auf dem Gerät.
 
 ## Entwicklungsstand
 
-**Version 0.31.0 – reduzierter Auftragsbereich mit klarer Hauptaktion**
+**Version 0.31.1 – Nachtschichtkorrektur und Beginn der Stabilisierung**
 
 Die erste Version konzentriert sich auf eine eindeutig getestete Fachlogik.
 Eine mobile Oberfläche für Android und später iOS wird auf diesen Rechenkern
@@ -43,6 +43,7 @@ startbare Datei unter `dist\WerkMate.exe` erzeugen.
 
 Siehe [Anleitung](docs/ANLEITUNG.md),
 [MVP-Spezifikation](docs/MVP-SPEZIFIKATION.md),
+[Stabilisierungsplan](docs/STABILISIERUNGSPLAN.md),
 [Konsolen-MVP ausprobieren](docs/KONSOLEN-MVP.md),
 [Windows-EXE](docs/WINDOWS-EXE.md) und
 [Änderungen](CHANGELOG.md).
