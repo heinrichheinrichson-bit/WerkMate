@@ -6,6 +6,29 @@ import 'package:werkmate_mobile/main.dart';
 import 'package:werkmate_mobile/work_session_store.dart';
 
 void main() {
+  test('work identity separates order, die and operation', () {
+    const item = WorkItem(
+      id: '1',
+      orderNumber: '40230747',
+      dieNumber: '8720',
+      operation: 'fp',
+      quantity: 12,
+      minutesPerPiece: 20,
+    );
+    expect(item.name, 'Auftrag 40230747 · Ges. 8720 · FP');
+    expect(WorkItem.fromJson(item.toJson()).operation, 'fp');
+  });
+
+  test('old saved work names remain readable', () {
+    final item = WorkItem.fromJson({
+      'id': 'old',
+      'name': '8720',
+      'quantity': 12,
+      'minutesPerPiece': 20,
+    });
+    expect(item.dieNumber, '8720');
+  });
+
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   testWidgets('starts with smartphone planning navigation', (tester) async {
@@ -36,8 +59,8 @@ void main() {
       shiftNumber: 1,
       startMinutes: 5 * 60 + 45,
       items: const [
-        WorkItem(id: '1', name: '8720', quantity: 12, minutesPerPiece: 20),
-        WorkItem(id: '2', name: '4261', quantity: 40, minutesPerPiece: 15),
+        WorkItem(id: '1', dieNumber: '8720', quantity: 12, minutesPerPiece: 20),
+        WorkItem(id: '2', dieNumber: '4261', quantity: 40, minutesPerPiece: 15),
       ],
     );
     final result = calculateSchedule(plan, DateTime(2026, 8, 28));
@@ -57,7 +80,7 @@ void main() {
       shiftNumber: 3,
       startMinutes: 21 * 60 + 45,
       items: const [
-        WorkItem(id: '1', name: '4261', quantity: 40, minutesPerPiece: 15),
+        WorkItem(id: '1', dieNumber: '4261', quantity: 40, minutesPerPiece: 15),
       ],
     );
     final result = calculateSchedule(plan, DateTime(2026, 8, 28)).single;
@@ -73,7 +96,12 @@ void main() {
         shiftNumber: 1,
         startMinutes: 345,
         items: [
-          WorkItem(id: '1', name: '8720', quantity: 12, minutesPerPiece: 20),
+          WorkItem(
+            id: '1',
+            dieNumber: '8720',
+            quantity: 12,
+            minutesPerPiece: 20,
+          ),
         ],
       ),
       DateTime(2026, 8, 28),
@@ -88,7 +116,7 @@ void main() {
     await store.save(snapshot);
     final restored = await store.load();
     expect(restored?.isRunning, isTrue);
-    expect(restored?.steps.single.item.name, '8720');
+    expect(restored?.steps.single.item.dieNumber, '8720');
     expect(restored?.targetEnd, DateTime(2026, 8, 28, 10, 3));
   });
 }

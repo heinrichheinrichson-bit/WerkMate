@@ -33,6 +33,7 @@ class AlarmService {
           >();
       await android?.requestNotificationsPermission();
       await android?.requestExactAlarmsPermission();
+      await android?.requestFullScreenIntentPermission();
     } else if (!kIsWeb && Platform.isIOS) {
       await plugin
           .resolvePlatformSpecificImplementation<
@@ -46,10 +47,10 @@ class AlarmService {
     await initialize();
     await cancel();
     final scheduled = tz.TZDateTime.from(target, tz.local);
-    const details = NotificationDetails(
+    final details = NotificationDetails(
       android: AndroidNotificationDetails(
-        'work_target_alarm',
-        'Sollzeit erreicht',
+        'work_target_alarm_v2',
+        'WerkMate Arbeitsalarm',
         channelDescription:
             'Erinnert an die Rückmeldung oder Verlängerung einer Arbeit.',
         importance: Importance.max,
@@ -57,8 +58,15 @@ class AlarmService {
         playSound: true,
         enableVibration: true,
         category: AndroidNotificationCategory.alarm,
+        ongoing: true,
+        autoCancel: false,
+        fullScreenIntent: true,
+        additionalFlags: Int32List.fromList([4]), // FLAG_INSISTENT
       ),
-      iOS: DarwinNotificationDetails(presentAlert: true, presentSound: true),
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentSound: true,
+      ),
     );
     try {
       await plugin.zonedSchedule(

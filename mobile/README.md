@@ -14,7 +14,9 @@ Aktueller Umfang:
 - kein automatischer Start der nächsten Arbeit
 - responsive Anordnung für Hochformat, Querformat und Tablets
 - laufender Arbeitsmodus wird nach einem App-Neustart wiederhergestellt
-- Android-Systembenachrichtigung am Soll-Ende, auch im Hintergrund
+- anhaltender Android-Arbeitsalarm am Soll-Ende, auch im Hintergrund
+- Alarm wird erst durch Rückmeldung, Verlängerung oder Stummschalten beendet
+- getrennte Auftragsnummer, Gesenknummer und Arbeitsgang je Arbeit
 
 ## Prüfen und starten
 

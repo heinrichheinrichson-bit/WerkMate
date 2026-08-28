@@ -51,24 +51,39 @@ class ShiftWindow {
 class WorkItem {
   const WorkItem({
     required this.id,
-    required this.name,
+    required this.dieNumber,
+    this.orderNumber = '',
+    this.operation = '',
     required this.quantity,
     required this.minutesPerPiece,
   });
-  final String id, name;
+  final String id, orderNumber, dieNumber, operation;
   final int quantity;
   final double minutesPerPiece;
 
+  String get name {
+    final details = [
+      if (orderNumber.trim().isNotEmpty) 'Auftrag ${orderNumber.trim()}',
+      if (dieNumber.trim().isNotEmpty) 'Ges. ${dieNumber.trim()}',
+      if (operation.trim().isNotEmpty) operation.trim().toUpperCase(),
+    ];
+    return details.isEmpty ? 'Manuelle Arbeit' : details.join(' · ');
+  }
+
   Map<String, Object> toJson() => {
     'id': id,
-    'name': name,
+    'orderNumber': orderNumber,
+    'dieNumber': dieNumber,
+    'operation': operation,
     'quantity': quantity,
     'minutesPerPiece': minutesPerPiece,
   };
 
   factory WorkItem.fromJson(Map<String, dynamic> json) => WorkItem(
     id: json['id'] as String,
-    name: json['name'] as String,
+    orderNumber: json['orderNumber'] as String? ?? '',
+    dieNumber: json['dieNumber'] as String? ?? json['name'] as String? ?? '',
+    operation: json['operation'] as String? ?? '',
     quantity: json['quantity'] as int,
     minutesPerPiece: (json['minutesPerPiece'] as num).toDouble(),
   );

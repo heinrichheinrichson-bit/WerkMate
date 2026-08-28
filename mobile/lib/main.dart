@@ -528,12 +528,15 @@ class WorkItemSheet extends StatefulWidget {
 }
 
 class _WorkItemSheetState extends State<WorkItemSheet> {
-  late final TextEditingController name, quantity, minutes;
+  late final TextEditingController orderNumber, dieNumber, operation;
+  late final TextEditingController quantity, minutes;
   String? error;
   @override
   void initState() {
     super.initState();
-    name = TextEditingController(text: widget.item?.name ?? '');
+    orderNumber = TextEditingController(text: widget.item?.orderNumber ?? '');
+    dieNumber = TextEditingController(text: widget.item?.dieNumber ?? '');
+    operation = TextEditingController(text: widget.item?.operation ?? '');
     quantity = TextEditingController(
       text: widget.item?.quantity.toString() ?? '',
     );
@@ -562,11 +565,33 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
         ),
         const SizedBox(height: 18),
         TextField(
-          controller: name,
+          controller: dieNumber,
           autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Gesenknummer oder Bezeichnung',
-          ),
+          decoration: const InputDecoration(labelText: 'Gesenknummer'),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: orderNumber,
+                decoration: const InputDecoration(
+                  labelText: 'Auftragsnummer (optional)',
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: operation,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Arbeitsgang',
+                  hintText: 'z. B. FP',
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         Row(
@@ -614,7 +639,9 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
       context,
       WorkItem(
         id: widget.item?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
-        name: name.text.trim().isEmpty ? 'Manuelle Arbeit' : name.text.trim(),
+        orderNumber: orderNumber.text.trim(),
+        dieNumber: dieNumber.text.trim(),
+        operation: operation.text.trim().toUpperCase(),
         quantity: amount,
         minutesPerPiece: pieceTime,
       ),
@@ -793,6 +820,14 @@ class _TodayPageState extends State<TodayPage> {
             icon: const Icon(Icons.more_time),
             label: const Text('ICH BRAUCHE LÄNGER'),
           ),
+          if (overdue) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: silenceAlarm,
+              icon: const Icon(Icons.notifications_off_outlined),
+              label: const Text('ALARM STUMMSCHALTEN'),
+            ),
+          ],
         ],
       ],
     );
@@ -843,6 +878,16 @@ class _TodayPageState extends State<TodayPage> {
       alarmed = false;
     });
     widget.onSessionChanged(index >= widget.steps.length ? null : _snapshot());
+  }
+
+  void silenceAlarm() {
+    AlarmService.instance.cancel();
+    setState(() => alarmed = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Alarm stumm – die aktuelle Arbeit läuft weiter.'),
+      ),
+    );
   }
 
   Future<void> extend() async {
