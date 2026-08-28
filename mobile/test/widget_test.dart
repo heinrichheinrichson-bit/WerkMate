@@ -49,8 +49,8 @@ void main() {
       DateTime(2026, 8, 28),
     ).single;
 
-    expect(normalStep.wholePieces, 30);
-    expect(overtimeStep.wholePieces, 34);
+    expect(normalStep.wholePieces, 31);
+    expect(overtimeStep.wholePieces, 35);
     expect(overtimeStep.exactPieces, closeTo(34.8, 0.001));
     expect(
       hhmm(
@@ -61,6 +61,37 @@ void main() {
       '14:45',
     );
     expect(ShiftPlan.fromJson(overtime.toJson()).overtimeHours, 1);
+  });
+
+  test('5.6 pieces recommends six but still allows five', () {
+    const items = [
+      WorkItem(id: '1', dieNumber: '1111', quantity: 10, minutesPerPiece: 15),
+      WorkItem(id: '2', dieNumber: '1111', quantity: 10, minutesPerPiece: 20),
+      WorkItem(id: '3', dieNumber: '8720', quantity: 40, minutesPerPiece: 20),
+    ];
+    const automatic = ShiftPlan(
+      name: 'Rundung',
+      shiftNumber: 2,
+      startMinutes: 13 * 60 + 45,
+      items: items,
+    );
+    final recommended = calculateSchedule(
+      automatic,
+      DateTime(2026, 8, 28),
+    ).last;
+    final downItems = [...items];
+    downItems[2] = downItems[2].copyWith(roundingChoice: RoundingChoice.down);
+    final roundedDown = calculateSchedule(
+      automatic.copyWith(items: downItems),
+      DateTime(2026, 8, 28),
+    ).last;
+
+    expect(recommended.exactPieces, closeTo(5.6, 0.001));
+    expect(recommended.recommendedPieces, 6);
+    expect(recommended.wholePieces, 6);
+    expect(recommended.end, DateTime(2026, 8, 28, 21, 53));
+    expect(roundedDown.wholePieces, 5);
+    expect(roundedDown.end, DateTime(2026, 8, 28, 21, 33));
   });
 
   testWidgets('planning shows occupied and still open shift minutes', (
@@ -132,10 +163,10 @@ void main() {
     expect(result[0].end, DateTime(2026, 8, 28, 10, 3));
     expect(result[0].wholePieces, 12);
     expect(result[1].start, DateTime(2026, 8, 28, 10, 3));
-    expect(result[1].end, DateTime(2026, 8, 28, 13, 33));
-    expect(result[1].wholePieces, 14);
+    expect(result[1].end, DateTime(2026, 8, 28, 13, 48));
+    expect(result[1].wholePieces, 15);
     expect(result[1].exactPieces, 14.8);
-    expect(result[1].remaining, 26);
+    expect(result[1].remaining, 25);
   });
 
   test('night shift calculation crosses midnight', () {
@@ -148,9 +179,9 @@ void main() {
       ],
     );
     final result = calculateSchedule(plan, DateTime(2026, 8, 28)).single;
-    expect(result.wholePieces, 30);
+    expect(result.wholePieces, 31);
     expect(result.exactPieces, 30.8);
-    expect(result.end, DateTime(2026, 8, 29, 5, 33));
+    expect(result.end, DateTime(2026, 8, 29, 5, 48));
   });
 
   test('active work survives an app restart', () async {

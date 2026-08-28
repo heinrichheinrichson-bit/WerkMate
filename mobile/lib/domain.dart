@@ -56,16 +56,20 @@ class ShiftWindow {
   final DateTime start, end, pauseStart, pauseEnd;
 }
 
+enum RoundingChoice { automatic, down, up }
+
 class WorkItem {
   const WorkItem({
     required this.id,
     required this.dieNumber,
     this.orderNumber = '',
     this.operation = '',
+    this.roundingChoice = RoundingChoice.automatic,
     required this.quantity,
     required this.minutesPerPiece,
   });
   final String id, orderNumber, dieNumber, operation;
+  final RoundingChoice roundingChoice;
   final int quantity;
   final double minutesPerPiece;
 
@@ -83,6 +87,7 @@ class WorkItem {
     'orderNumber': orderNumber,
     'dieNumber': dieNumber,
     'operation': operation,
+    'roundingChoice': roundingChoice.name,
     'quantity': quantity,
     'minutesPerPiece': minutesPerPiece,
   };
@@ -92,8 +97,22 @@ class WorkItem {
     orderNumber: json['orderNumber'] as String? ?? '',
     dieNumber: json['dieNumber'] as String? ?? json['name'] as String? ?? '',
     operation: json['operation'] as String? ?? '',
+    roundingChoice: RoundingChoice.values.firstWhere(
+      (value) => value.name == json['roundingChoice'],
+      orElse: () => RoundingChoice.automatic,
+    ),
     quantity: json['quantity'] as int,
     minutesPerPiece: (json['minutesPerPiece'] as num).toDouble(),
+  );
+
+  WorkItem copyWith({RoundingChoice? roundingChoice}) => WorkItem(
+    id: id,
+    orderNumber: orderNumber,
+    dieNumber: dieNumber,
+    operation: operation,
+    roundingChoice: roundingChoice ?? this.roundingChoice,
+    quantity: quantity,
+    minutesPerPiece: minutesPerPiece,
   );
 }
 
@@ -104,16 +123,22 @@ class ScheduleStep {
     required this.end,
     required this.pauseStart,
     required this.pauseEnd,
+    required this.capacityEnd,
     required this.wholePieces,
+    required this.recommendedPieces,
     required this.exactPieces,
   });
   final WorkItem item;
-  final DateTime start, end, pauseStart, pauseEnd;
-  final int wholePieces;
+  final DateTime start, end, pauseStart, pauseEnd, capacityEnd;
+  final int wholePieces, recommendedPieces;
   final double exactPieces;
   int get remaining => item.quantity - wholePieces;
   int get productiveSeconds =>
       (wholePieces * item.minutesPerPiece * 60).round();
+  int get lowerPieces => exactPieces.floor();
+  int get upperPieces => math.min(item.quantity, exactPieces.ceil());
+  bool get hasRoundingChoice =>
+      exactPieces < item.quantity && lowerPieces != upperPieces;
 
   Map<String, Object> toJson() => {
     'item': item.toJson(),
@@ -121,7 +146,9 @@ class ScheduleStep {
     'end': end.toIso8601String(),
     'pauseStart': pauseStart.toIso8601String(),
     'pauseEnd': pauseEnd.toIso8601String(),
+    'capacityEnd': capacityEnd.toIso8601String(),
     'wholePieces': wholePieces,
+    'recommendedPieces': recommendedPieces,
     'exactPieces': exactPieces,
   };
 
@@ -131,7 +158,12 @@ class ScheduleStep {
     end: DateTime.parse(json['end'] as String),
     pauseStart: DateTime.parse(json['pauseStart'] as String),
     pauseEnd: DateTime.parse(json['pauseEnd'] as String),
+    capacityEnd: DateTime.parse(
+      json['capacityEnd'] as String? ?? json['end'] as String,
+    ),
     wholePieces: json['wholePieces'] as int,
+    recommendedPieces:
+        json['recommendedPieces'] as int? ?? json['wholePieces'] as int,
     exactPieces: (json['exactPieces'] as num).toDouble(),
   );
 }
@@ -212,7 +244,15 @@ List<ScheduleStep> calculateSchedule(ShiftPlan plan, DateTime date) {
       item.quantity.toDouble(),
       available / item.minutesPerPiece,
     );
-    final whole = exact.floor();
+    final lower = exact.floor();
+    final upper = math.min(item.quantity, exact.ceil());
+    final fraction = exact - lower;
+    final recommended = lower == upper || fraction < 0.5 ? lower : upper;
+    final whole = switch (item.roundingChoice) {
+      RoundingChoice.down => lower,
+      RoundingChoice.up => upper,
+      RoundingChoice.automatic => recommended,
+    };
     final end = addProductiveMinutes(
       cursor,
       whole * item.minutesPerPiece,
@@ -226,7 +266,9 @@ List<ScheduleStep> calculateSchedule(ShiftPlan plan, DateTime date) {
         end: end,
         pauseStart: shift.pauseStart,
         pauseEnd: shift.pauseEnd,
+        capacityEnd: shift.end,
         wholePieces: whole,
+        recommendedPieces: recommended,
         exactPieces: exact,
       ),
     );

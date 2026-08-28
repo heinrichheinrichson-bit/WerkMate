@@ -115,7 +115,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.5',
+              'Mobile 0.6',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -278,6 +278,12 @@ class _PlanPageState extends State<PlanPage> {
   String? error;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _calculate());
+  }
+
+  @override
   void didUpdateWidget(covariant PlanPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.plan, widget.plan)) _calculate();
@@ -302,9 +308,17 @@ class _PlanPageState extends State<PlanPage> {
         ) /
         60;
     final capacityMinutes = productiveHours * 60;
-    final plannedMinutes = widget.plan.items.fold<double>(
+    final totalWorkMinutes = widget.plan.items.fold<double>(
       0,
       (total, item) => total + item.quantity * item.minutesPerPiece,
+    );
+    final plannedMinutes = schedule.fold<double>(
+      0,
+      (total, step) => total + step.wholePieces * step.item.minutesPerPiece,
+    );
+    final remainingWorkMinutes = (totalWorkMinutes - plannedMinutes).clamp(
+      0.0,
+      double.infinity,
     );
     final openMinutes = capacityMinutes - plannedMinutes;
     final overplanned = openMinutes < 0;
@@ -543,6 +557,13 @@ class _PlanPageState extends State<PlanPage> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
+                if (remainingWorkMinutes > 0) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '${_number(remainingWorkMinutes)} Min. Auftragsvolumen bleiben für später offen',
+                    style: const TextStyle(color: Color(0xff667085)),
+                  ),
+                ],
               ],
             ),
           ),
@@ -565,7 +586,11 @@ class _PlanPageState extends State<PlanPage> {
           ),
           const SizedBox(height: 10),
           ...schedule.asMap().entries.map(
-            (entry) => ScheduleCard(index: entry.key, step: entry.value),
+            (entry) => ScheduleCard(
+              index: entry.key,
+              step: entry.value,
+              onRoundingChanged: (choice) => _setRounding(entry.key, choice),
+            ),
           ),
         ],
         const SizedBox(height: 16),
@@ -594,6 +619,12 @@ class _PlanPageState extends State<PlanPage> {
 
   void _setOvertime(int hours) {
     _change(widget.plan.copyWith(overtimeHours: hours.clamp(0, 12)));
+  }
+
+  void _setRounding(int index, RoundingChoice choice) {
+    final items = [...widget.plan.items];
+    items[index] = items[index].copyWith(roundingChoice: choice);
+    _change(widget.plan.copyWith(items: items));
   }
 
   void _calculate() {
@@ -772,6 +803,7 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
         orderNumber: orderNumber.text.trim(),
         dieNumber: dieNumber.text.trim(),
         operation: operation.text.trim().toUpperCase(),
+        roundingChoice: widget.item?.roundingChoice ?? RoundingChoice.automatic,
         quantity: amount,
         minutesPerPiece: pieceTime,
       ),
@@ -1144,58 +1176,110 @@ class MorePage extends StatelessWidget {
 }
 
 class ScheduleCard extends StatelessWidget {
-  const ScheduleCard({super.key, required this.index, required this.step});
+  const ScheduleCard({
+    super.key,
+    required this.index,
+    required this.step,
+    required this.onRoundingChanged,
+  });
   final int index;
   final ScheduleStep step;
+  final ValueChanged<RoundingChoice> onRoundingChanged;
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 9),
-    child: Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(child: Text('${index + 1}')),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          step.item.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
+  Widget build(BuildContext context) {
+    final lowerEnd = addProductiveMinutes(
+      step.start,
+      step.lowerPieces * step.item.minutesPerPiece,
+      step.pauseStart,
+      step.pauseEnd,
+    );
+    final upperEnd = addProductiveMinutes(
+      step.start,
+      step.upperPieces * step.item.minutesPerPiece,
+      step.pauseStart,
+      step.pauseEnd,
+    );
+    final lowerFree = step.capacityEnd.difference(lowerEnd);
+    final upperOver = upperEnd.difference(step.capacityEnd);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 9),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(child: Text('${index + 1}')),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            step.item.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
                           ),
                         ),
-                      ),
+                        Text(
+                          '${hhmm(step.start)}–${hhmm(step.end)}',
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${step.wholePieces} Stück geplant · ${_number(step.exactPieces)} rechnerisch',
+                    ),
+                    if (step.hasRoundingChoice) ...[
+                      const SizedBox(height: 10),
                       Text(
-                        '${hhmm(step.start)}–${hhmm(step.end)}',
-                        style: const TextStyle(fontWeight: FontWeight.w800),
+                        'Stückzahl wählen:',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ChoiceChip(
+                            selected: step.wholePieces == step.lowerPieces,
+                            onSelected: (_) =>
+                                onRoundingChanged(RoundingChoice.down),
+                            label: Text(
+                              '${step.lowerPieces} Stk · bis ${hhmm(lowerEnd)}\n${_number(lowerFree.inSeconds / 60)} Min. frei${step.recommendedPieces == step.lowerPieces ? ' · empfohlen' : ''}',
+                            ),
+                          ),
+                          ChoiceChip(
+                            selected: step.wholePieces == step.upperPieces,
+                            onSelected: (_) =>
+                                onRoundingChanged(RoundingChoice.up),
+                            label: Text(
+                              '${step.upperPieces} Stk · bis ${hhmm(upperEnd)}\n${_number(upperOver.inSeconds / 60)} Min. länger${step.recommendedPieces == step.upperPieces ? ' · empfohlen' : ''}',
+                            ),
+                          ),
+                        ],
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    '${step.wholePieces} ganze Stück · ${_number(step.exactPieces)} rechnerisch',
-                  ),
-                  if (step.remaining > 0)
-                    Text(
-                      '${step.remaining} Stück bleiben offen',
-                      style: const TextStyle(color: Color(0xffb54708)),
-                    ),
-                ],
+                    if (step.remaining > 0)
+                      Text(
+                        '${step.remaining} Stück bleiben offen',
+                        style: const TextStyle(color: Color(0xffb54708)),
+                      ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class ResponsivePage extends StatelessWidget {

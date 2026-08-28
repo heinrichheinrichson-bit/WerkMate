@@ -20,6 +20,8 @@ Aktueller Umfang:
 - ganze Überstunden per Minus/Plus mit sofortiger Neuplanung
 - Android-Weckton statt des gewöhnlichen Benachrichtigungstons
 - Schichtbelegung mit Kapazität, verplanten und noch offenen Minuten
+- wählbare Auf-/Abrundung mit beiden Endzeiten und einer Empfehlung
+- Restauftragsvolumen getrennt von der heutigen Schichtplanung
 
 ## Prüfen und starten
 
