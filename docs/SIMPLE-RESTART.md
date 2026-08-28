@@ -18,6 +18,8 @@ aber nicht gestartet.
 - Arbeiten hochschieben, herunterschieben oder entfernen
 - Soll-Zeitspanne und benötigte Stückzahl für jede Arbeit
 - klare Anzeige, sobald die verfügbare Schichtzeit aufgebraucht ist
+- einzelne geplante Arbeiten nachträglich bearbeiten
+- Schichtpläne lokal speichern, laden, duplizieren und löschen
 
 Es gibt zunächst keine Aufträge, Historie, Rückmeldung, Guthaben oder Planung in
 der sichtbaren Oberfläche. Erweiterungen folgen erst, wenn dieser Rechner im

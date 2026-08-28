@@ -6,12 +6,14 @@ import tkinter as tk
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
-from tkinter import messagebox, ttk
+from pathlib import Path
+from tkinter import messagebox, simpledialog, ttk
 
 from .calculator import calculate_shift_requirement
 from .cli import default_database_path
 from .database import WerkMateDatabase
 from .service import WerkMateService
+from .simple_plans import SimplePlanStore
 from .timecalc import minutes_to_seconds, seconds_to_minutes
 
 
@@ -27,15 +29,18 @@ class PlanJob:
 
 
 class SimpleWerkMateApp(tk.Tk):
-    VERSION = "Simple 0.3"
+    VERSION = "Simple 0.4"
 
     def __init__(self, database_path=None) -> None:
         super().__init__()
         self.title(f"WerkMate · {self.VERSION}")
         self.geometry("860x820")
         self.minsize(720, 680)
-        self.database = WerkMateDatabase(database_path or default_database_path())
+        db_path = Path(database_path or default_database_path())
+        self.database = WerkMateDatabase(db_path)
         self.service = WerkMateService(self.database)
+        self.plan_store = SimplePlanStore(db_path.with_name("simple_plans.json"))
+        self.loaded_plan_name: str | None = None
         self.plan_date = local_now().date()
         self.jobs: list[PlanJob] = []
         self._style()
@@ -64,6 +69,13 @@ class SimpleWerkMateApp(tk.Tk):
         body.pack(fill="both", expand=True)
         ttk.Label(body, text="Meine Schicht planen", style="Title.TLabel").pack(anchor="w")
         ttk.Label(body, text="Arbeiten eintragen – WerkMate verteilt die Stück bis Schichtende.", style="Muted.TLabel").pack(anchor="w", pady=(3, 16))
+
+        saved = ttk.Frame(body)
+        saved.pack(fill="x", pady=(0, 10))
+        ttk.Button(saved, text="Plan speichern", command=self.save_plan).pack(side="left")
+        ttk.Button(saved, text="Gespeicherte Pläne", command=self.open_plan_manager).pack(side="left", padx=6)
+        self.saved_hint = ttk.Label(saved, text="Noch nicht gespeichert", style="Muted.TLabel")
+        self.saved_hint.pack(side="left", padx=8)
 
         shift = ttk.LabelFrame(body, text="SCHICHT", style="Card.TLabelframe", padding=14)
         shift.pack(fill="x")
@@ -112,6 +124,7 @@ class SimpleWerkMateApp(tk.Tk):
         controls.pack(fill="x", pady=(8, 0))
         ttk.Button(controls, text="▲ Hoch", command=lambda: self.move_job(-1)).pack(side="left")
         ttk.Button(controls, text="▼ Runter", command=lambda: self.move_job(1)).pack(side="left", padx=6)
+        ttk.Button(controls, text="Bearbeiten", command=self.edit_job).pack(side="left")
         ttk.Button(controls, text="Entfernen", command=self.remove_job).pack(side="left")
         ttk.Button(controls, text="Plan leeren", command=self.clear_jobs).pack(side="right")
 
@@ -194,6 +207,7 @@ class SimpleWerkMateApp(tk.Tk):
             messagebox.showerror("Eingabe prüfen", str(error) or "Bitte eine gültige Gesamtstückzahl eingeben.", parent=self)
             return
         self.jobs.append(PlanJob(self.die_entry.get().strip() or f"Arbeit {len(self.jobs) + 1}", quantity, seconds))
+        self._mark_changed()
         self._refresh_jobs()
         for entry in (self.die_entry, self.quantity_entry, self.piece_time_entry, self.total_time_entry):
             self._replace(entry, "")
@@ -213,14 +227,53 @@ class SimpleWerkMateApp(tk.Tk):
         if index is None or not 0 <= index + direction < len(self.jobs):
             return
         self.jobs[index], self.jobs[index + direction] = self.jobs[index + direction], self.jobs[index]
+        self._mark_changed()
         self._refresh_jobs()
         self.job_tree.selection_set(str(index + direction))
+
+    def edit_job(self) -> None:
+        index = self._selection()
+        if index is None:
+            messagebox.showinfo("Arbeit auswählen", "Bitte zuerst eine Arbeit in der Liste auswählen.", parent=self)
+            return
+        job = self.jobs[index]
+        die = simpledialog.askstring("Arbeit bearbeiten", "Gesenknummer oder Bezeichnung:", initialvalue=job.die, parent=self)
+        if die is None:
+            return
+        quantity_text = simpledialog.askstring("Arbeit bearbeiten", "Gesamtstück:", initialvalue=str(job.quantity), parent=self)
+        if quantity_text is None:
+            return
+        minutes_text = simpledialog.askstring(
+            "Arbeit bearbeiten", "Stückzeit in Minuten:",
+            initialvalue=str(seconds_to_minutes(job.seconds_per_piece)).replace(".", ","), parent=self,
+        )
+        if minutes_text is None:
+            return
+        try:
+            quantity = int(quantity_text.strip())
+            seconds = minutes_to_seconds(minutes_text)
+            if quantity <= 0 or seconds <= 0:
+                raise ValueError
+        except (ValueError, TypeError):
+            messagebox.showerror("Eingabe prüfen", "Gesamtstück und Stückzeit müssen größer als null sein.", parent=self)
+            return
+        self.jobs[index] = PlanJob(die.strip() or f"Arbeit {index + 1}", quantity, seconds)
+        self._mark_changed()
+        self._refresh_jobs()
+        self.job_tree.selection_set(str(index))
 
     def remove_job(self) -> None:
         index = self._selection()
         if index is not None:
             self.jobs.pop(index)
+            self._mark_changed()
             self._refresh_jobs()
+
+    def _mark_changed(self) -> None:
+        if self.loaded_plan_name:
+            self.saved_hint.configure(text=f"Geändert: {self.loaded_plan_name}")
+        else:
+            self.saved_hint.configure(text="Noch nicht gespeichert")
 
     def clear_jobs(self) -> None:
         self.jobs.clear()
@@ -228,6 +281,123 @@ class SimpleWerkMateApp(tk.Tk):
         self.main_result.configure(text="Noch keine Arbeiten geplant")
         self.exact_result.configure(text="")
         self.result_lines.configure(text="")
+        self.loaded_plan_name = None
+        self.saved_hint.configure(text="Noch nicht gespeichert")
+
+    def _plan_data(self, name: str) -> dict:
+        return {
+            "name": name,
+            "shift_number": self._selected_shift(),
+            "start": self.start_entry.get().strip(),
+            "jobs": [
+                {"die": job.die, "quantity": job.quantity, "seconds_per_piece": job.seconds_per_piece}
+                for job in self.jobs
+            ],
+        }
+
+    def save_plan(self) -> None:
+        if not self.jobs:
+            messagebox.showinfo("Noch leer", "Bitte zuerst mindestens eine Arbeit hinzufügen.", parent=self)
+            return
+        name = simpledialog.askstring(
+            "Schichtplan speichern", "Name des Plans:",
+            initialvalue=self.loaded_plan_name or "", parent=self,
+        )
+        if name is None:
+            return
+        name = name.strip()
+        try:
+            self.plan_store.save(self._plan_data(name), replace_name=self.loaded_plan_name)
+        except ValueError as error:
+            messagebox.showerror("Plan nicht gespeichert", str(error), parent=self)
+            return
+        self.loaded_plan_name = name
+        self.saved_hint.configure(text=f"Gespeichert: {name}")
+
+    def _load_plan(self, plan: dict) -> None:
+        number = int(plan["shift_number"])
+        if number not in self.shift_options:
+            raise ValueError("Die gespeicherte Schicht ist nicht mehr vorhanden.")
+        self.shift_entry.set(self.shift_options[number])
+        self._shift_selected()
+        self._replace(self.start_entry, str(plan["start"]))
+        self.jobs = [
+            PlanJob(str(item["die"]), int(item["quantity"]), int(item["seconds_per_piece"]))
+            for item in plan.get("jobs", [])
+        ]
+        self.loaded_plan_name = str(plan["name"])
+        self.saved_hint.configure(text=f"Geladen: {self.loaded_plan_name}")
+        self._refresh_jobs()
+        self.calculate()
+
+    def open_plan_manager(self) -> None:
+        window = tk.Toplevel(self)
+        window.title("Gespeicherte Schichtpläne")
+        window.transient(self)
+        window.grab_set()
+        window.resizable(False, False)
+        frame = ttk.Frame(window, padding=18)
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="Gespeicherte Pläne", style="Title.TLabel").pack(anchor="w", pady=(0, 12))
+        choice = ttk.Combobox(frame, state="readonly", width=42)
+        choice.pack(fill="x", pady=(0, 12))
+
+        def refresh(select: str | None = None) -> list[dict]:
+            plans = self.plan_store.list()
+            names = [str(item["name"]) for item in plans]
+            choice.configure(values=names)
+            if select in names:
+                choice.set(select)
+            elif names:
+                choice.current(0)
+            else:
+                choice.set("")
+            return plans
+
+        def selected() -> dict | None:
+            return next((item for item in self.plan_store.list() if item.get("name") == choice.get()), None)
+
+        def load() -> None:
+            plan = selected()
+            if plan:
+                try:
+                    self._load_plan(plan)
+                except (KeyError, TypeError, ValueError) as error:
+                    messagebox.showerror("Plan nicht geladen", str(error), parent=window)
+                    return
+                window.destroy()
+
+        def duplicate() -> None:
+            plan = selected()
+            if not plan:
+                return
+            new_name = simpledialog.askstring("Plan duplizieren", "Name der Kopie:", initialvalue=f"{plan['name']} Kopie", parent=window)
+            if not new_name:
+                return
+            try:
+                self.plan_store.duplicate(str(plan["name"]), new_name.strip())
+            except ValueError as error:
+                messagebox.showerror("Nicht dupliziert", str(error), parent=window)
+                return
+            refresh(new_name.strip())
+
+        def delete() -> None:
+            plan = selected()
+            if not plan or not messagebox.askyesno("Plan löschen", f"„{plan['name']}“ wirklich löschen?", parent=window):
+                return
+            self.plan_store.delete(str(plan["name"]))
+            if self.loaded_plan_name == plan["name"]:
+                self.loaded_plan_name = None
+                self.saved_hint.configure(text="Geladener Plan wurde gelöscht")
+            refresh()
+
+        buttons = ttk.Frame(frame)
+        buttons.pack(fill="x")
+        ttk.Button(buttons, text="Laden", command=load).pack(side="left")
+        ttk.Button(buttons, text="Duplizieren", command=duplicate).pack(side="left", padx=6)
+        ttk.Button(buttons, text="Löschen", command=delete).pack(side="left")
+        ttk.Button(buttons, text="Schließen", command=window.destroy).pack(side="right")
+        refresh()
 
     def calculate(self) -> None:
         if not self.jobs:
