@@ -10,6 +10,7 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -23,6 +24,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -32,6 +34,17 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    implementation(files("../../third_party/flutter_local_notifications/android/libs/media-1.1.0.aar"))
+    implementation(files("libs/error_prone_annotations-2.36.0.jar"))
+    coreLibraryDesugaring(
+        files(
+            "libs/desugar_jdk_libs-2.1.4.jar",
+            "libs/desugar_jdk_libs_configuration-2.1.4.jar",
+        ),
+    )
 }
 
 kotlin {

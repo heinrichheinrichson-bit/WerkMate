@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# The vendored notification package is kept reproducible, but its upstream
+# demo and package tests are not part of WerkMate.
+/third_party/flutter_local_notifications/example/
+/third_party/flutter_local_notifications/test/

@@ -91,6 +91,26 @@ class ScheduleStep {
   int get remaining => item.quantity - wholePieces;
   int get productiveSeconds =>
       (wholePieces * item.minutesPerPiece * 60).round();
+
+  Map<String, Object> toJson() => {
+    'item': item.toJson(),
+    'start': start.toIso8601String(),
+    'end': end.toIso8601String(),
+    'pauseStart': pauseStart.toIso8601String(),
+    'pauseEnd': pauseEnd.toIso8601String(),
+    'wholePieces': wholePieces,
+    'exactPieces': exactPieces,
+  };
+
+  factory ScheduleStep.fromJson(Map<String, dynamic> json) => ScheduleStep(
+    item: WorkItem.fromJson(Map<String, dynamic>.from(json['item'] as Map)),
+    start: DateTime.parse(json['start'] as String),
+    end: DateTime.parse(json['end'] as String),
+    pauseStart: DateTime.parse(json['pauseStart'] as String),
+    pauseEnd: DateTime.parse(json['pauseEnd'] as String),
+    wholePieces: json['wholePieces'] as int,
+    exactPieces: (json['exactPieces'] as num).toDouble(),
+  );
 }
 
 class ShiftPlan {

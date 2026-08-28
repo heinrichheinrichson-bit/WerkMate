@@ -1,0 +1,46 @@
+group 'com.dexterous.flutterlocalnotifications'
+version '1.0-SNAPSHOT'
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'com.dexterous.flutterlocalnotifications'
+    compileSdk 36
+    compileOptions {
+        coreLibraryDesugaringEnabled true
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    defaultConfig {
+        multiDexEnabled true
+        minSdkVersion 21
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    lintOptions {
+        disable 'InvalidPackage'
+    }
+}
+
+dependencies {
+    coreLibraryDesugaring files(
+        "${rootProject.projectDir}/app/libs/desugar_jdk_libs-2.1.4.jar",
+        "${rootProject.projectDir}/app/libs/desugar_jdk_libs_configuration-2.1.4.jar"
+    )
+    implementation "androidx.core:core:1.3.0"
+    compileOnly files('libs/media-1.1.0.aar')
+    implementation files('libs/gson-2.12.0.jar')
+
+    testImplementation 'junit:junit:4.12'
+    testImplementation 'org.mockito:mockito-core:3.10.0'
+    testImplementation 'androidx.test:core:1.2.0'
+    testImplementation "org.robolectric:robolectric:4.14.1"
+}

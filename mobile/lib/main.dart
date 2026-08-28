@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'domain.dart';
+import 'alarm_service.dart';
 import 'plan_store.dart';
+import 'work_session_store.dart';
 
 void main() => runApp(const WerkMateApp());
 
@@ -60,9 +62,11 @@ class WerkMateHome extends StatefulWidget {
 
 class _WerkMateHomeState extends State<WerkMateHome> {
   final store = PlanStore();
+  final sessionStore = WorkSessionStore();
   int page = 1;
   List<ShiftPlan> saved = [];
   List<ScheduleStep> activeSteps = [];
+  WorkSessionSnapshot? restoredSession;
   int runKey = 0;
   late ShiftPlan draft;
 
@@ -72,6 +76,15 @@ class _WerkMateHomeState extends State<WerkMateHome> {
     draft = _emptyPlan();
     store.load().then((value) {
       if (mounted) setState(() => saved = value);
+    });
+    sessionStore.load().then((value) {
+      if (mounted && value != null && value.index < value.steps.length) {
+        setState(() {
+          activeSteps = value.steps;
+          restoredSession = value;
+          runKey++;
+        });
+      }
     });
   }
 
@@ -102,7 +115,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.1',
+              'Mobile 0.2',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -113,16 +126,17 @@ class _WerkMateHomeState extends State<WerkMateHome> {
       child: IndexedStack(
         index: page,
         children: [
-          TodayPage(key: ValueKey(runKey), steps: activeSteps),
+          TodayPage(
+            key: ValueKey(runKey),
+            steps: activeSteps,
+            restored: restoredSession,
+            onSessionChanged: persistSession,
+          ),
           PlanPage(
             plan: draft,
             onChanged: (value) => setState(() => draft = value),
             onSave: saveDraft,
-            onStart: (steps) => setState(() {
-              activeSteps = steps;
-              runKey++;
-              page = 0;
-            }),
+            onStart: startPlan,
           ),
           PlansPage(
             plans: saved,
@@ -202,6 +216,27 @@ class _WerkMateHomeState extends State<WerkMateHome> {
     }
   }
 
+  Future<void> startPlan(List<ScheduleStep> steps) async {
+    final snapshot = WorkSessionSnapshot(steps: steps, index: 0);
+    await sessionStore.save(snapshot);
+    if (!mounted) return;
+    setState(() {
+      activeSteps = steps;
+      restoredSession = snapshot;
+      runKey++;
+      page = 0;
+    });
+  }
+
+  Future<void> persistSession(WorkSessionSnapshot? snapshot) async {
+    if (snapshot == null || snapshot.index >= snapshot.steps.length) {
+      await sessionStore.clear();
+    } else {
+      await sessionStore.save(snapshot);
+    }
+    restoredSession = snapshot;
+  }
+
   Future<void> duplicatePlan(ShiftPlan plan) async {
     var name = '${plan.name} Kopie';
     var suffix = 2;
@@ -253,8 +288,7 @@ class _PlanPageState extends State<PlanPage> {
     final template = ShiftTemplate.all.firstWhere(
       (s) => s.number == widget.plan.shiftNumber,
     );
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+    return ResponsivePage(
       children: [
         const PageTitle(
           title: 'Schicht planen',
@@ -589,8 +623,15 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
 }
 
 class TodayPage extends StatefulWidget {
-  const TodayPage({super.key, required this.steps});
+  const TodayPage({
+    super.key,
+    required this.steps,
+    required this.restored,
+    required this.onSessionChanged,
+  });
   final List<ScheduleStep> steps;
+  final WorkSessionSnapshot? restored;
+  final ValueChanged<WorkSessionSnapshot?> onSessionChanged;
   @override
   State<TodayPage> createState() => _TodayPageState();
 }
@@ -601,6 +642,21 @@ class _TodayPageState extends State<TodayPage> {
   Timer? timer;
   bool alarmed = false;
   DateTime now = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    final restored = widget.restored;
+    if (restored != null && restored.steps.isNotEmpty) {
+      index = restored.index;
+      startedAt = restored.startedAt;
+      targetEnd = restored.targetEnd;
+      if (restored.isRunning) {
+        timer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+      }
+    }
+  }
+
   @override
   void dispose() {
     timer?.cancel();
@@ -629,8 +685,7 @@ class _TodayPageState extends State<TodayPage> {
         ? targetEnd!.difference(startedAt!).inMilliseconds
         : 1;
     final elapsed = running ? now.difference(startedAt!).inMilliseconds : 0;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+    return ResponsivePage(
       children: [
         PageTitle(
           title: 'Heute',
@@ -759,6 +814,13 @@ class _TodayPageState extends State<TodayPage> {
     });
     timer?.cancel();
     timer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+    final snapshot = _snapshot();
+    widget.onSessionChanged(snapshot);
+    AlarmService.instance.requestPermissions().then((_) {
+      if (targetEnd != null) {
+        AlarmService.instance.schedule(targetEnd!, step.item.name);
+      }
+    });
   }
 
   void tick() {
@@ -773,12 +835,14 @@ class _TodayPageState extends State<TodayPage> {
 
   void finish() {
     timer?.cancel();
+    AlarmService.instance.cancel();
     setState(() {
       index++;
       startedAt = null;
       targetEnd = null;
       alarmed = false;
     });
+    widget.onSessionChanged(index >= widget.steps.length ? null : _snapshot());
   }
 
   Future<void> extend() async {
@@ -801,7 +865,16 @@ class _TodayPageState extends State<TodayPage> {
       targetEnd = candidate;
       alarmed = false;
     });
+    widget.onSessionChanged(_snapshot());
+    AlarmService.instance.schedule(candidate, widget.steps[index].item.name);
   }
+
+  WorkSessionSnapshot _snapshot() => WorkSessionSnapshot(
+    steps: widget.steps,
+    index: index,
+    startedAt: startedAt,
+    targetEnd: targetEnd,
+  );
 }
 
 class PlansPage extends StatelessWidget {
@@ -815,8 +888,7 @@ class PlansPage extends StatelessWidget {
   final List<ShiftPlan> plans;
   final ValueChanged<ShiftPlan> onLoad, onDuplicate, onDelete;
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+  Widget build(BuildContext context) => ResponsivePage(
     children: [
       const PageTitle(
         title: 'Meine Pläne',
@@ -863,8 +935,7 @@ class PlansPage extends StatelessWidget {
 class MorePage extends StatelessWidget {
   const MorePage({super.key});
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+  Widget build(BuildContext context) => ResponsivePage(
     children: const [
       PageTitle(
         title: 'Mehr',
@@ -948,6 +1019,34 @@ class ScheduleCard extends StatelessWidget {
           ],
         ),
       ),
+    ),
+  );
+}
+
+class ResponsivePage extends StatelessWidget {
+  const ResponsivePage({super.key, required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => ListView(
+      padding: EdgeInsets.fromLTRB(
+        constraints.maxWidth >= 700 ? 28 : 16,
+        10,
+        constraints.maxWidth >= 700 ? 28 : 16,
+        28,
+      ),
+      children: [
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 820),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          ),
+        ),
+      ],
     ),
   );
 }

@@ -12,6 +12,9 @@ Aktueller Umfang:
 - lokale Planspeicherung
 - manueller Arbeitsstart, Countdown, Überzeit und erneute Alarmzeit
 - kein automatischer Start der nächsten Arbeit
+- responsive Anordnung für Hochformat, Querformat und Tablets
+- laufender Arbeitsmodus wird nach einem App-Neustart wiederhergestellt
+- Android-Systembenachrichtigung am Soll-Ende, auch im Hintergrund
 
 ## Prüfen und starten
 
