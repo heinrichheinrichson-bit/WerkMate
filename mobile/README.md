@@ -19,6 +19,7 @@ Aktueller Umfang:
 - getrennte Auftragsnummer, Gesenknummer und Arbeitsgang je Arbeit
 - ganze Überstunden per Minus/Plus mit sofortiger Neuplanung
 - Android-Weckton statt des gewöhnlichen Benachrichtigungstons
+- Schichtbelegung mit Kapazität, verplanten und noch offenen Minuten
 
 ## Prüfen und starten
 

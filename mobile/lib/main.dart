@@ -115,7 +115,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.2',
+              'Mobile 0.5',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -301,6 +301,16 @@ class _PlanPageState extends State<PlanPage> {
           shift.pauseEnd,
         ) /
         60;
+    final capacityMinutes = productiveHours * 60;
+    final plannedMinutes = widget.plan.items.fold<double>(
+      0,
+      (total, item) => total + item.quantity * item.minutesPerPiece,
+    );
+    final openMinutes = capacityMinutes - plannedMinutes;
+    final overplanned = openMinutes < 0;
+    final planProgress = capacityMinutes <= 0
+        ? 0.0
+        : (plannedMinutes / capacityMinutes).clamp(0.0, 1.0);
     return ResponsivePage(
       children: [
         const PageTitle(
@@ -464,7 +474,7 @@ class _PlanPageState extends State<PlanPage> {
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     subtitle: Text(
-                      '${item.quantity} Stück · ${_number(item.minutesPerPiece)} min/Stück',
+                      '${item.quantity} Stück · ${_number(item.minutesPerPiece)} min/Stück · ${_number(item.quantity * item.minutesPerPiece)} Min. gesamt',
                     ),
                     trailing: PopupMenuButton<String>(
                       onSelected: (value) {
@@ -487,6 +497,56 @@ class _PlanPageState extends State<PlanPage> {
               );
             },
           ),
+        const SizedBox(height: 14),
+        Card(
+          color: overplanned ? const Color(0xffffe4e0) : null,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Schichtbelegung',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${_number(plannedMinutes)} / ${_number(capacityMinutes)} Min.',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                LinearProgressIndicator(
+                  value: planProgress,
+                  minHeight: 10,
+                  borderRadius: BorderRadius.circular(99),
+                  color: overplanned ? const Color(0xffd92d20) : null,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  overplanned
+                      ? '${_number(openMinutes.abs())} Min. über die Schicht hinaus verplant'
+                      : openMinutes == 0
+                      ? 'Schicht vollständig verplant'
+                      : 'Noch ${_number(openMinutes)} Min. zu verplanen',
+                  style: TextStyle(
+                    color: overplanned
+                        ? const Color(0xffb42318)
+                        : const Color(0xff344054),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
         if (error != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),

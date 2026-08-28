@@ -63,6 +63,36 @@ void main() {
     expect(ShiftPlan.fromJson(overtime.toJson()).overtimeHours, 1);
   });
 
+  testWidgets('planning shows occupied and still open shift minutes', (
+    tester,
+  ) async {
+    const plan = ShiftPlan(
+      name: 'Fünf Stunden',
+      shiftNumber: 1,
+      startMinutes: 5 * 60 + 45,
+      items: [
+        WorkItem(id: '1', dieNumber: '5555', quantity: 20, minutesPerPiece: 15),
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PlanPage(
+            plan: plan,
+            onChanged: (_) {},
+            onSave: () {},
+            onStart: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('300 / 462 Min.'), findsOneWidget);
+    expect(find.text('Noch 162 Min. zu verplanen'), findsOneWidget);
+    expect(find.textContaining('300 Min. gesamt'), findsOneWidget);
+  });
+
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   testWidgets('starts with smartphone planning navigation', (tester) async {
