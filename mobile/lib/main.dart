@@ -1,104 +1,176 @@
-import 'dart:math' as math;
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-void main() => runApp(const WerkMateMobile());
+import 'domain.dart';
+import 'plan_store.dart';
 
-class WerkMateMobile extends StatefulWidget {
-  const WerkMateMobile({super.key});
-  @override
-  State<WerkMateMobile> createState() => _WerkMateMobileState();
-}
+void main() => runApp(const WerkMateApp());
 
-class _WerkMateMobileState extends State<WerkMateMobile> {
-  int page = 0;
-  WorkRun? active;
-  final history = <WorkReport>[];
+class WerkMateApp extends StatelessWidget {
+  const WerkMateApp({super.key});
 
   @override
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
-    title: 'WerkMate Mobile',
+    title: 'WerkMate',
     theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff14532d)),
       useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xff2563eb),
+        brightness: Brightness.light,
+      ),
+      scaffoldBackgroundColor: const Color(0xfff6f7fb),
+      cardTheme: const CardThemeData(
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(20)),
+          side: BorderSide(color: Color(0xffe4e7ec)),
+        ),
+      ),
       inputDecorationTheme: const InputDecorationTheme(
-        border: OutlineInputBorder(),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(14)),
+          borderSide: BorderSide(color: Color(0xffd0d5dd)),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(0, 54),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
       ),
     ),
-    home: Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'WerkMate',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 16),
-            child: Center(child: Text('Mobile · 0.19.0')),
-          ),
-        ],
+    home: const WerkMateHome(),
+  );
+}
+
+class WerkMateHome extends StatefulWidget {
+  const WerkMateHome({super.key});
+  @override
+  State<WerkMateHome> createState() => _WerkMateHomeState();
+}
+
+class _WerkMateHomeState extends State<WerkMateHome> {
+  final store = PlanStore();
+  int page = 1;
+  List<ShiftPlan> saved = [];
+  List<ScheduleStep> activeSteps = [];
+  int runKey = 0;
+  late ShiftPlan draft;
+
+  @override
+  void initState() {
+    super.initState();
+    draft = _emptyPlan();
+    store.load().then((value) {
+      if (mounted) setState(() => saved = value);
+    });
+  }
+
+  ShiftPlan _emptyPlan() {
+    final now = DateTime.now();
+    final shift = ShiftTemplate.all.firstWhere((s) {
+      final window = s.onDate(now);
+      return !now.isBefore(window.start) && now.isBefore(window.end);
+    }, orElse: () => ShiftTemplate.all.first);
+    return ShiftPlan(
+      name: '',
+      shiftNumber: shift.number,
+      startMinutes: shift.startHour * 60 + shift.startMinute,
+      items: const [],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: const Text(
+        'WerkMate',
+        style: TextStyle(fontWeight: FontWeight.w800),
       ),
-      body: SafeArea(
-        child: IndexedStack(
-          index: page,
-          children: [
-            ActivePage(active: active, onReport: reportActive),
-            QuickStartPage(
-              onStart: (run) => setState(() {
-                active = run;
-                page = 0;
-              }),
+      centerTitle: false,
+      actions: const [
+        Padding(
+          padding: EdgeInsets.only(right: 18),
+          child: Center(
+            child: Text(
+              'Mobile 0.1',
+              style: TextStyle(color: Color(0xff667085)),
             ),
-            HistoryPage(history: history),
-          ],
+          ),
         ),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: page,
-        onDestinationSelected: (value) => setState(() => page = value),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.timer_outlined),
-            label: 'Laufend',
+      ],
+    ),
+    body: SafeArea(
+      child: IndexedStack(
+        index: page,
+        children: [
+          TodayPage(key: ValueKey(runKey), steps: activeSteps),
+          PlanPage(
+            plan: draft,
+            onChanged: (value) => setState(() => draft = value),
+            onSave: saveDraft,
+            onStart: (steps) => setState(() {
+              activeSteps = steps;
+              runKey++;
+              page = 0;
+            }),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.play_arrow),
-            label: 'Schnellstart',
+          PlansPage(
+            plans: saved,
+            onLoad: (plan) => setState(() {
+              draft = plan.copyWith();
+              page = 1;
+            }),
+            onDuplicate: duplicatePlan,
+            onDelete: deletePlan,
           ),
-          NavigationDestination(icon: Icon(Icons.history), label: 'Historie'),
+          const MorePage(),
         ],
       ),
+    ),
+    bottomNavigationBar: NavigationBar(
+      selectedIndex: page,
+      onDestinationSelected: (value) => setState(() => page = value),
+      destinations: const [
+        NavigationDestination(
+          icon: Icon(Icons.timer_outlined),
+          selectedIcon: Icon(Icons.timer),
+          label: 'Heute',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.view_timeline_outlined),
+          selectedIcon: Icon(Icons.view_timeline),
+          label: 'Planen',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.bookmark_outline),
+          selectedIcon: Icon(Icons.bookmark),
+          label: 'Pläne',
+        ),
+        NavigationDestination(icon: Icon(Icons.more_horiz), label: 'Mehr'),
+      ],
     ),
   );
 
-  Future<void> reportActive() async {
-    final run = active;
-    if (run == null) return;
-    final actual = TextEditingController(text: '${run.plannedPieces}');
-    final reported = TextEditingController(text: '${run.plannedPieces}');
-    final result = await showDialog<(int, int)>(
+  Future<void> saveDraft() async {
+    final controller = TextEditingController(text: draft.name);
+    final name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Arbeitseinsatz rückmelden'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: actual,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Tatsächlich bearbeitet',
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: reported,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Betrieblich rückgemeldet',
-              ),
-            ),
-          ],
+        title: const Text('Plan speichern'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Name des Plans'),
         ),
         actions: [
           TextButton(
@@ -106,413 +178,834 @@ class _WerkMateMobileState extends State<WerkMateMobile> {
             child: const Text('Abbrechen'),
           ),
           FilledButton(
-            onPressed: () {
-              final a = int.tryParse(actual.text);
-              final r = int.tryParse(reported.text);
-              if (a != null && r != null && a >= 0 && r >= 0 && r <= a) {
-                Navigator.pop(context, (a, r));
-              }
-            },
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
             child: const Text('Speichern'),
           ),
         ],
       ),
     );
-    if (result == null) return;
-    setState(() {
-      history.insert(0, WorkReport(run, DateTime.now(), result.$1, result.$2));
-      active = null;
-      page = 2;
-    });
+    if (name == null || name.isEmpty || draft.items.isEmpty) return;
+    final updated = draft.copyWith(name: name);
+    final copy = [...saved];
+    final index = copy.indexWhere((plan) => plan.name == name);
+    if (index >= 0) {
+      copy[index] = updated;
+    } else {
+      copy.add(updated);
+    }
+    await store.write(copy);
+    if (mounted) {
+      setState(() {
+        draft = updated;
+        saved = copy;
+      });
+    }
+  }
+
+  Future<void> duplicatePlan(ShiftPlan plan) async {
+    var name = '${plan.name} Kopie';
+    var suffix = 2;
+    while (saved.any((item) => item.name == name)) {
+      name = '${plan.name} Kopie $suffix';
+      suffix++;
+    }
+    final copy = [...saved, plan.copyWith(name: name)];
+    await store.write(copy);
+    if (mounted) setState(() => saved = copy);
+  }
+
+  Future<void> deletePlan(ShiftPlan plan) async {
+    final copy = saved.where((item) => item.name != plan.name).toList();
+    await store.write(copy);
+    if (mounted) setState(() => saved = copy);
   }
 }
 
-class ActivePage extends StatelessWidget {
-  const ActivePage({super.key, required this.active, required this.onReport});
-  final WorkRun? active;
-  final VoidCallback onReport;
+class PlanPage extends StatefulWidget {
+  const PlanPage({
+    super.key,
+    required this.plan,
+    required this.onChanged,
+    required this.onSave,
+    required this.onStart,
+  });
+  final ShiftPlan plan;
+  final ValueChanged<ShiftPlan> onChanged;
+  final VoidCallback onSave;
+  final ValueChanged<List<ScheduleStep>> onStart;
+
+  @override
+  State<PlanPage> createState() => _PlanPageState();
+}
+
+class _PlanPageState extends State<PlanPage> {
+  List<ScheduleStep> schedule = [];
+  String? error;
+
+  @override
+  void didUpdateWidget(covariant PlanPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.plan, widget.plan)) _calculate();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final run = active;
-    if (run == null) {
+    final template = ShiftTemplate.all.firstWhere(
+      (s) => s.number == widget.plan.shiftNumber,
+    );
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+      children: [
+        const PageTitle(
+          title: 'Schicht planen',
+          subtitle: 'Was möchtest du heute schaffen?',
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Schicht',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<int>(
+                  initialValue: widget.plan.shiftNumber,
+                  items: ShiftTemplate.all
+                      .map(
+                        (s) => DropdownMenuItem(
+                          value: s.number,
+                          child: Text(
+                            '${s.name} · ${_hm(s.startHour, s.startMinute)}–${_hm(s.endHour, s.endMinute)}',
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    final selected = ShiftTemplate.all.firstWhere(
+                      (s) => s.number == value,
+                    );
+                    _change(
+                      widget.plan.copyWith(
+                        shiftNumber: value,
+                        startMinutes:
+                            selected.startHour * 60 + selected.startMinute,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 10),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.schedule),
+                  title: const Text('Beginn der ersten Arbeit'),
+                  subtitle: Text(_minutes(widget.plan.startMinutes)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _pickStart,
+                ),
+                Text(
+                  'Feste Pause ${_hm(template.pauseHour, template.pauseMinute)}–${_hm(template.pauseEndHour, template.pauseEndMinute)} wird verrechnet.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xff667085),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Text(
+              'Arbeiten',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const Spacer(),
+            FilledButton.tonalIcon(
+              onPressed: () => _editItem(),
+              icon: const Icon(Icons.add),
+              label: const Text('Hinzufügen'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (widget.plan.items.isEmpty)
+          const EmptyCard(
+            icon: Icons.playlist_add,
+            text: 'Füge deine erste Arbeit hinzu.',
+          )
+        else
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: widget.plan.items.length,
+            onReorderItem: (oldIndex, newIndex) {
+              final items = [...widget.plan.items];
+              final item = items.removeAt(oldIndex);
+              items.insert(newIndex, item);
+              _change(widget.plan.copyWith(items: items));
+            },
+            itemBuilder: (context, index) {
+              final item = widget.plan.items[index];
+              return Padding(
+                key: ValueKey(item.id),
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Card(
+                  child: ListTile(
+                    leading: CircleAvatar(child: Text('${index + 1}')),
+                    title: Text(
+                      item.name,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      '${item.quantity} Stück · ${_number(item.minutesPerPiece)} min/Stück',
+                    ),
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (value) {
+                        if (value == 'edit') _editItem(index);
+                        if (value == 'delete') {
+                          final items = [...widget.plan.items]..removeAt(index);
+                          _change(widget.plan.copyWith(items: items));
+                        }
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'edit', child: Text('Bearbeiten')),
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: Text('Entfernen'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        if (error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        if (schedule.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Text(
+            'Soll-Ablauf',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          ...schedule.asMap().entries.map(
+            (entry) => ScheduleCard(index: entry.key, step: entry.value),
+          ),
+        ],
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+          onPressed: widget.plan.items.isEmpty ? null : widget.onSave,
+          icon: const Icon(Icons.bookmark_add_outlined),
+          label: const Text('PLAN SPEICHERN'),
+        ),
+        const SizedBox(height: 8),
+        FilledButton.icon(
+          onPressed: schedule.isEmpty ? null : () => widget.onStart(schedule),
+          icon: const Icon(Icons.arrow_forward),
+          label: const Text('ZUM ARBEITSMODUS'),
+        ),
+      ],
+    );
+  }
+
+  void _change(ShiftPlan plan) {
+    widget.onChanged(plan);
+    schedule = [];
+    error = null;
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) => _calculate());
+  }
+
+  void _calculate() {
+    if (!mounted || widget.plan.items.isEmpty) {
+      if (mounted) {
+        setState(() {
+          schedule = [];
+          error = null;
+        });
+      }
+      return;
+    }
+    try {
+      final value = calculateSchedule(widget.plan, DateTime.now());
+      setState(() {
+        schedule = value;
+        error = null;
+      });
+    } catch (e) {
+      setState(() {
+        schedule = [];
+        error = e.toString().replaceFirst('Invalid argument(s): ', '');
+      });
+    }
+  }
+
+  Future<void> _pickStart() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: widget.plan.startMinutes ~/ 60,
+        minute: widget.plan.startMinutes % 60,
+      ),
+    );
+    if (picked != null) {
+      _change(
+        widget.plan.copyWith(startMinutes: picked.hour * 60 + picked.minute),
+      );
+    }
+  }
+
+  Future<void> _editItem([int? index]) async {
+    final current = index == null ? null : widget.plan.items[index];
+    final result = await showModalBottomSheet<WorkItem>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => WorkItemSheet(item: current),
+    );
+    if (result == null) return;
+    final items = [...widget.plan.items];
+    index == null ? items.add(result) : items[index] = result;
+    _change(widget.plan.copyWith(items: items));
+  }
+}
+
+class WorkItemSheet extends StatefulWidget {
+  const WorkItemSheet({super.key, this.item});
+  final WorkItem? item;
+  @override
+  State<WorkItemSheet> createState() => _WorkItemSheetState();
+}
+
+class _WorkItemSheetState extends State<WorkItemSheet> {
+  late final TextEditingController name, quantity, minutes;
+  String? error;
+  @override
+  void initState() {
+    super.initState();
+    name = TextEditingController(text: widget.item?.name ?? '');
+    quantity = TextEditingController(
+      text: widget.item?.quantity.toString() ?? '',
+    );
+    minutes = TextEditingController(
+      text: widget.item == null ? '' : _number(widget.item!.minutesPerPiece),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.fromLTRB(
+      20,
+      18,
+      20,
+      20 + MediaQuery.viewInsetsOf(context).bottom,
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.item == null ? 'Arbeit hinzufügen' : 'Arbeit bearbeiten',
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 18),
+        TextField(
+          controller: name,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Gesenknummer oder Bezeichnung',
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: quantity,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Gesamtstück'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: minutes,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(labelText: 'min/Stück'),
+              ),
+            ),
+          ],
+        ),
+        if (error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        const SizedBox(height: 18),
+        FilledButton(onPressed: submit, child: const Text('ÜBERNEHMEN')),
+      ],
+    ),
+  );
+  void submit() {
+    final amount = int.tryParse(quantity.text.trim());
+    final pieceTime = double.tryParse(minutes.text.trim().replaceAll(',', '.'));
+    if (amount == null || amount <= 0 || pieceTime == null || pieceTime <= 0) {
+      setState(() => error = 'Bitte Gesamtstück und Stückzeit prüfen.');
+      return;
+    }
+    Navigator.pop(
+      context,
+      WorkItem(
+        id: widget.item?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
+        name: name.text.trim().isEmpty ? 'Manuelle Arbeit' : name.text.trim(),
+        quantity: amount,
+        minutesPerPiece: pieceTime,
+      ),
+    );
+  }
+}
+
+class TodayPage extends StatefulWidget {
+  const TodayPage({super.key, required this.steps});
+  final List<ScheduleStep> steps;
+  @override
+  State<TodayPage> createState() => _TodayPageState();
+}
+
+class _TodayPageState extends State<TodayPage> {
+  int index = 0;
+  DateTime? startedAt, targetEnd;
+  Timer? timer;
+  bool alarmed = false;
+  DateTime now = DateTime.now();
+  @override
+  void dispose() {
+    timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.steps.isEmpty) return const EmptyToday();
+    if (index >= widget.steps.length) {
       return const Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.task_alt, size: 64, color: Colors.grey),
-              SizedBox(height: 16),
-              Text(
-                'Kein laufender Auftrag',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Unter „Schnellstart“ genügen Menge und Stückzeit.',
-                textAlign: TextAlign.center,
-              ),
-            ],
+          padding: EdgeInsets.all(28),
+          child: EmptyCard(
+            icon: Icons.task_alt,
+            text: 'Alle geplanten Arbeiten beendet.',
           ),
         ),
       );
     }
-    final overdue = DateTime.now().isAfter(run.targetEnd);
+    final step = widget.steps[index];
+    final running = startedAt != null && targetEnd != null;
+    final overdue = running && now.isAfter(targetEnd!);
+    final difference = running ? targetEnd!.difference(now) : Duration.zero;
+    final total = running
+        ? targetEnd!.difference(startedAt!).inMilliseconds
+        : 1;
+    final elapsed = running ? now.difference(startedAt!).inMilliseconds : 0;
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
       children: [
-        Text(
-          run.orderNumber,
-          style: Theme.of(
-            context,
-          ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+        PageTitle(
+          title: 'Heute',
+          subtitle: running
+              ? 'Aktuelle Arbeit läuft'
+              : 'Bereit für deinen manuellen Start',
         ),
-        Text(
-          'Gesenk ${run.dieNumber} · ${run.minutesPerPiece.toStringAsFixed(1)} min/Stück',
-        ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 18),
         Card(
-          color: overdue ? Theme.of(context).colorScheme.errorContainer : null,
+          color: overdue ? const Color(0xffffe4e0) : null,
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(22),
             child: Column(
               children: [
                 Text(
-                  overdue ? 'RÜCKMELDUNG ÜBERFÄLLIG' : 'GEPLANTE RÜCKMELDUNG',
+                  '${index + 1} VON ${widget.steps.length}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xff667085),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  clock(run.targetEnd),
-                  style: const TextStyle(
-                    fontSize: 42,
-                    fontWeight: FontWeight.w800,
+                  step.item.name,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
                 Text(
-                  '${run.plannedPieces} vollständige Stück für diesen Einsatz',
+                  '${step.wholePieces} Stück · ${_number(step.item.minutesPerPiece)} min/Stück',
+                ),
+                const SizedBox(height: 28),
+                Text(
+                  !running
+                      ? 'NOCH NICHT GESTARTET'
+                      : overdue
+                      ? 'ÜBERZEIT'
+                      : 'VERBLEIBEND',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: overdue
+                        ? const Color(0xffb42318)
+                        : const Color(0xff2563eb),
+                  ),
+                ),
+                Text(
+                  !running
+                      ? '--:--:--'
+                      : '${overdue ? '+ ' : ''}${durationClock(difference)}',
+                  style: TextStyle(
+                    fontSize: 46,
+                    fontWeight: FontWeight.w900,
+                    color: overdue
+                        ? const Color(0xffb42318)
+                        : const Color(0xff101828),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                LinearProgressIndicator(
+                  value: running ? (elapsed / total).clamp(0, 1) : 0,
+                  minHeight: 10,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  running
+                      ? 'Start ${hhmm(startedAt!)} · Soll-Ende ${hhmm(targetEnd!)}'
+                      : 'Start und Soll-Ende werden erst beim Start gesetzt.',
                 ),
               ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Card(
+          child: ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.skip_next)),
+            title: const Text(
+              'Danach',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: Text(
+              index + 1 < widget.steps.length
+                  ? '${widget.steps[index + 1].item.name} · startet erst nach deiner Bestätigung'
+                  : 'Keine weitere Arbeit geplant',
             ),
           ),
         ),
         const SizedBox(height: 18),
-        InfoRow(label: 'Anmeldung', value: dateTime(run.startedAt)),
-        InfoRow(label: 'Schichtende', value: dateTime(run.shiftEnd)),
-        InfoRow(
-          label: 'Schichtprognose',
-          value: '${run.pieceEquivalent.toStringAsFixed(1)} Stück',
-        ),
-        const SizedBox(height: 24),
-        FilledButton.icon(
-          onPressed: onReport,
-          icon: const Icon(Icons.check),
-          label: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 14),
-            child: Text('STÜCK RÜCKMELDEN'),
+        if (!running)
+          FilledButton.icon(
+            onPressed: start,
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('ARBEIT MANUELL STARTEN'),
+          )
+        else ...[
+          FilledButton.icon(
+            onPressed: finish,
+            icon: const Icon(Icons.check),
+            label: const Text('ARBEIT FERTIG'),
           ),
-        ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: extend,
+            icon: const Icon(Icons.more_time),
+            label: const Text('ICH BRAUCHE LÄNGER'),
+          ),
+        ],
       ],
     );
   }
-}
 
-class QuickStartPage extends StatefulWidget {
-  const QuickStartPage({super.key, required this.onStart});
-  final ValueChanged<WorkRun> onStart;
-  @override
-  State<QuickStartPage> createState() => _QuickStartPageState();
-}
-
-class _QuickStartPageState extends State<QuickStartPage> {
-  final quantity = TextEditingController();
-  final minutes = TextEditingController();
-  final die = TextEditingController();
-  final order = TextEditingController();
-  String? error;
-  WorkRun? preview;
-  @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(20),
-    children: [
-      Text(
-        'Schnellstart',
-        style: Theme.of(
-          context,
-        ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
-      ),
-      const Text('Pflicht sind nur Menge und Stückzeit.'),
-      const SizedBox(height: 20),
-      Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: quantity,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Gesamtmenge *'),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: TextField(
-              controller: minutes,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(labelText: 'min/Stück *'),
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: die,
-        decoration: const InputDecoration(labelText: 'Gesenknummer (optional)'),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: order,
-        decoration: const InputDecoration(
-          labelText: 'Auftragsnummer (optional)',
-        ),
-      ),
-      if (error != null)
-        Padding(
-          padding: const EdgeInsets.only(top: 12),
-          child: Text(
-            error!,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
-        ),
-      const SizedBox(height: 16),
-      OutlinedButton(
-        onPressed: calculate,
-        child: const Text('SCHICHT BERECHNEN'),
-      ),
-      if (preview case final run?) ...[
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${run.pieceEquivalent.toStringAsFixed(1)} Stück bis Schichtende',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text('Davon ${run.plannedPieces} Stück vollständig'),
-                Text('Geplante Rückmeldung: ${dateTime(run.targetEnd)}'),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: () => widget.onStart(run),
-          icon: const Icon(Icons.play_arrow),
-          label: const Padding(
-            padding: EdgeInsets.symmetric(vertical: 14),
-            child: Text('ARBEIT STARTEN'),
-          ),
-        ),
-      ],
-    ],
-  );
-
-  void calculate() {
-    final amount = int.tryParse(quantity.text.trim());
-    final pieceTime = double.tryParse(minutes.text.trim().replaceAll(',', '.'));
-    if (amount == null || amount <= 0 || pieceTime == null || pieceTime <= 0) {
-      setState(
-        () => error = 'Bitte eine gültige Menge und Stückzeit eingeben.',
+  void start() {
+    final current = DateTime.now();
+    final step = widget.steps[index];
+    setState(() {
+      startedAt = current;
+      targetEnd = addProductiveMinutes(
+        current,
+        step.productiveSeconds / 60,
+        step.pauseStart,
+        step.pauseEnd,
       );
-      return;
+      now = current;
+      alarmed = false;
+    });
+    timer?.cancel();
+    timer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+  }
+
+  void tick() {
+    if (!mounted || targetEnd == null) return;
+    setState(() => now = DateTime.now());
+    if (!alarmed && !now.isBefore(targetEnd!)) {
+      alarmed = true;
+      SystemSound.play(SystemSoundType.alert);
+      HapticFeedback.heavyImpact();
+    }
+  }
+
+  void finish() {
+    timer?.cancel();
+    setState(() {
+      index++;
+      startedAt = null;
+      targetEnd = null;
+      alarmed = false;
+    });
+  }
+
+  Future<void> extend() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(targetEnd!),
+    );
+    if (picked == null) return;
+    var candidate = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      picked.hour,
+      picked.minute,
+    );
+    if (!candidate.isAfter(now)) {
+      candidate = candidate.add(const Duration(days: 1));
     }
     setState(() {
-      error = null;
-      preview = WorkRun.calculate(
-        orderNumber: order.text.trim().isEmpty
-            ? 'SCHNELL-${DateTime.now().millisecondsSinceEpoch}'
-            : order.text.trim(),
-        dieNumber: die.text.trim().isEmpty ? 'MANUELL' : die.text.trim(),
-        totalQuantity: amount,
-        minutesPerPiece: pieceTime,
-        startedAt: DateTime.now(),
-      );
+      targetEnd = candidate;
+      alarmed = false;
     });
   }
 }
 
-class HistoryPage extends StatelessWidget {
-  const HistoryPage({super.key, required this.history});
-  final List<WorkReport> history;
+class PlansPage extends StatelessWidget {
+  const PlansPage({
+    super.key,
+    required this.plans,
+    required this.onLoad,
+    required this.onDuplicate,
+    required this.onDelete,
+  });
+  final List<ShiftPlan> plans;
+  final ValueChanged<ShiftPlan> onLoad, onDuplicate, onDelete;
   @override
-  Widget build(BuildContext context) {
-    if (history.isEmpty) {
-      return const Center(child: Text('Noch keine mobilen Rückmeldungen.'));
-    }
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: history.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 8),
-      itemBuilder: (_, index) {
-        final item = history[index];
-        final credit = item.actual - item.reported;
-        return Card(
-          child: ListTile(
-            title: Text(
-              item.run.orderNumber,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            subtitle: Text(
-              '${dateTime(item.run.startedAt)} – ${clock(item.endedAt)}\nBearbeitet ${item.actual} · Gemeldet ${item.reported}',
-            ),
-            trailing: Text(
-              'Guthaben\n${credit >= 0 ? '+' : ''}$credit',
-              textAlign: TextAlign.center,
-            ),
-            isThreeLine: true,
-          ),
-        );
-      },
-    );
-  }
-}
-
-class WorkRun {
-  WorkRun(
-    this.orderNumber,
-    this.dieNumber,
-    this.totalQuantity,
-    this.minutesPerPiece,
-    this.startedAt,
-    this.shiftEnd,
-    this.targetEnd,
-    this.pieceEquivalent,
-    this.plannedPieces,
-  );
-  final String orderNumber, dieNumber;
-  final int totalQuantity, plannedPieces;
-  final double minutesPerPiece, pieceEquivalent;
-  final DateTime startedAt, shiftEnd, targetEnd;
-  factory WorkRun.calculate({
-    required String orderNumber,
-    required String dieNumber,
-    required int totalQuantity,
-    required double minutesPerPiece,
-    required DateTime startedAt,
-  }) {
-    final shift = shiftAt(startedAt);
-    final productive = productiveMinutes(
-      startedAt,
-      shift.end,
-      shift.pauseStart,
-      shift.pauseEnd,
-    );
-    final equivalent = math.min(
-      totalQuantity.toDouble(),
-      productive / minutesPerPiece,
-    );
-    final whole = math.min(totalQuantity, math.max(1, equivalent.floor()));
-    return WorkRun(
-      orderNumber,
-      dieNumber,
-      totalQuantity,
-      minutesPerPiece,
-      startedAt,
-      shift.end,
-      addProductiveMinutes(
-        startedAt,
-        whole * minutesPerPiece,
-        shift.pauseStart,
-        shift.pauseEnd,
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+    children: [
+      const PageTitle(
+        title: 'Meine Pläne',
+        subtitle: 'Lokal auf diesem Gerät gespeichert',
       ),
-      equivalent,
-      whole,
-    );
-  }
+      const SizedBox(height: 16),
+      if (plans.isEmpty)
+        const EmptyCard(
+          icon: Icons.bookmark_border,
+          text: 'Noch kein Schichtplan gespeichert.',
+        ),
+      ...plans.map(
+        (plan) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Card(
+            child: ListTile(
+              contentPadding: const EdgeInsets.fromLTRB(18, 8, 8, 8),
+              title: Text(
+                plan.name,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: Text(
+                '${plan.items.length} Arbeiten · Start ${_minutes(plan.startMinutes)}',
+              ),
+              onTap: () => onLoad(plan),
+              trailing: PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'copy') onDuplicate(plan);
+                  if (value == 'delete') onDelete(plan);
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'copy', child: Text('Duplizieren')),
+                  PopupMenuItem(value: 'delete', child: Text('Löschen')),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
-class WorkReport {
-  WorkReport(this.run, this.endedAt, this.actual, this.reported);
-  final WorkRun run;
-  final DateTime endedAt;
-  final int actual, reported;
+class MorePage extends StatelessWidget {
+  const MorePage({super.key});
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+    children: const [
+      PageTitle(
+        title: 'Mehr',
+        subtitle: 'Weitere Bereiche folgen schrittweise',
+      ),
+      SizedBox(height: 16),
+      Card(
+        child: Column(
+          children: [
+            ListTile(
+              leading: Icon(Icons.precision_manufacturing_outlined),
+              title: Text('Gesenkkatalog'),
+              subtitle: Text('Als nächster Ausbauschritt'),
+            ),
+            Divider(height: 1),
+            ListTile(
+              leading: Icon(Icons.history),
+              title: Text('Historie'),
+              subtitle: Text('Nach der Stückrückmeldung'),
+            ),
+            Divider(height: 1),
+            ListTile(
+              leading: Icon(Icons.settings_outlined),
+              title: Text('Einstellungen'),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
 }
 
-class ShiftWindow {
-  const ShiftWindow(this.end, this.pauseStart, this.pauseEnd);
-  final DateTime end, pauseStart, pauseEnd;
-}
-
-ShiftWindow shiftAt(DateTime now) {
-  DateTime at(int day, int hour, int minute) =>
-      DateTime(now.year, now.month, now.day + day, hour, minute);
-  if (!now.isBefore(at(0, 5, 45)) && now.isBefore(at(0, 13, 45))) {
-    return ShiftWindow(at(0, 13, 45), at(0, 8, 45), at(0, 9, 3));
-  }
-  if (!now.isBefore(at(0, 13, 45)) && now.isBefore(at(0, 21, 45))) {
-    return ShiftWindow(at(0, 21, 45), at(0, 17, 45), at(0, 18, 3));
-  }
-  if (now.isBefore(at(0, 5, 45))) {
-    return ShiftWindow(at(0, 5, 45), at(0, 1, 45), at(0, 2, 3));
-  }
-  return ShiftWindow(at(1, 5, 45), at(1, 1, 45), at(1, 2, 3));
-}
-
-double productiveMinutes(
-  DateTime start,
-  DateTime end,
-  DateTime pauseStart,
-  DateTime pauseEnd,
-) {
-  final total = end.difference(start).inSeconds / 60;
-  final overlapStart = start.isAfter(pauseStart) ? start : pauseStart;
-  final overlapEnd = end.isBefore(pauseEnd) ? end : pauseEnd;
-  final pause = overlapEnd.isAfter(overlapStart)
-      ? overlapEnd.difference(overlapStart).inSeconds / 60
-      : 0;
-  return math.max(0, total - pause);
-}
-
-DateTime addProductiveMinutes(
-  DateTime start,
-  double minutes,
-  DateTime pauseStart,
-  DateTime pauseEnd,
-) {
-  final beforePause = pauseStart.difference(start).inSeconds / 60;
-  if (start.isBefore(pauseStart) && minutes > beforePause) {
-    return pauseEnd.add(
-      Duration(seconds: ((minutes - beforePause) * 60).round()),
-    );
-  }
-  if (!start.isBefore(pauseStart) && start.isBefore(pauseEnd)) {
-    return pauseEnd.add(Duration(seconds: (minutes * 60).round()));
-  }
-  return start.add(Duration(seconds: (minutes * 60).round()));
-}
-
-class InfoRow extends StatelessWidget {
-  const InfoRow({super.key, required this.label, required this.value});
-  final String label, value;
+class ScheduleCard extends StatelessWidget {
+  const ScheduleCard({super.key, required this.index, required this.step});
+  final int index;
+  final ScheduleStep step;
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
-      ],
+    padding: const EdgeInsets.only(bottom: 9),
+    child: Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(child: Text('${index + 1}')),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          step.item.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${hhmm(step.start)}–${hhmm(step.end)}',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    '${step.wholePieces} ganze Stück · ${_number(step.exactPieces)} rechnerisch',
+                  ),
+                  if (step.remaining > 0)
+                    Text(
+                      '${step.remaining} Stück bleiben offen',
+                      style: const TextStyle(color: Color(0xffb54708)),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     ),
   );
 }
 
-String clock(DateTime value) =>
-    '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
-String dateTime(DateTime value) =>
-    '${value.day.toString().padLeft(2, '0')}.${value.month.toString().padLeft(2, '0')}.${value.year} ${clock(value)}';
+class PageTitle extends StatelessWidget {
+  const PageTitle({super.key, required this.title, required this.subtitle});
+  final String title, subtitle;
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        title,
+        style: Theme.of(
+          context,
+        ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900),
+      ),
+      Text(subtitle, style: const TextStyle(color: Color(0xff667085))),
+    ],
+  );
+}
+
+class EmptyCard extends StatelessWidget {
+  const EmptyCard({super.key, required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        children: [
+          Icon(icon, size: 44, color: const Color(0xff98a2b3)),
+          const SizedBox(height: 10),
+          Text(text, textAlign: TextAlign.center),
+        ],
+      ),
+    ),
+  );
+}
+
+class EmptyToday extends StatelessWidget {
+  const EmptyToday({super.key});
+  @override
+  Widget build(BuildContext context) => const Center(
+    child: Padding(
+      padding: EdgeInsets.all(24),
+      child: EmptyCard(
+        icon: Icons.timer_outlined,
+        text: 'Noch kein Arbeitsablauf gestartet.\nPlane zuerst deine Schicht.',
+      ),
+    ),
+  );
+}
+
+String _hm(int hour, int minute) =>
+    '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+String _minutes(int value) => _hm(value ~/ 60, value % 60);
+String _number(double value) => value == value.roundToDouble()
+    ? value.toStringAsFixed(0)
+    : value.toStringAsFixed(1).replaceAll('.', ',');

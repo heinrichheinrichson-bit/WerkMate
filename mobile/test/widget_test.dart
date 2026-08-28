@@ -1,23 +1,53 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:werkmate_mobile/domain.dart';
 import 'package:werkmate_mobile/main.dart';
 
 void main() {
-  testWidgets('WerkMate starts on the empty running page', (tester) async {
-    await tester.pumpWidget(const WerkMateMobile());
-    expect(find.text('Kein laufender Auftrag'), findsOneWidget);
-    expect(find.text('Schnellstart'), findsOneWidget);
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('starts with smartphone planning navigation', (tester) async {
+    await tester.pumpWidget(const WerkMateApp());
+    await tester.pumpAndSettle();
+    expect(find.text('Schicht planen'), findsOneWidget);
+    for (final label in ['Heute', 'Planen', 'Pläne', 'Mehr']) {
+      expect(find.text(label), findsOneWidget);
+    }
   });
 
-  test('early shift forecast includes the fixed break', () {
-    final run = WorkRun.calculate(
-      orderNumber: 'FA',
-      dieNumber: '8720',
-      totalQuantity: 48,
-      minutesPerPiece: 20,
-      startedAt: DateTime(2026, 8, 26, 5, 45),
+  test('multiple jobs fill the remaining early shift in sequence', () {
+    final plan = ShiftPlan(
+      name: 'Test',
+      shiftNumber: 1,
+      startMinutes: 5 * 60 + 45,
+      items: const [
+        WorkItem(id: '1', name: '8720', quantity: 12, minutesPerPiece: 20),
+        WorkItem(id: '2', name: '4261', quantity: 40, minutesPerPiece: 15),
+      ],
     );
-    expect(run.pieceEquivalent, 23.1);
-    expect(run.plannedPieces, 23);
-    expect(run.targetEnd, DateTime(2026, 8, 26, 13, 43));
+    final result = calculateSchedule(plan, DateTime(2026, 8, 28));
+    expect(result[0].start, DateTime(2026, 8, 28, 5, 45));
+    expect(result[0].end, DateTime(2026, 8, 28, 10, 3));
+    expect(result[0].wholePieces, 12);
+    expect(result[1].start, DateTime(2026, 8, 28, 10, 3));
+    expect(result[1].end, DateTime(2026, 8, 28, 13, 33));
+    expect(result[1].wholePieces, 14);
+    expect(result[1].exactPieces, 14.8);
+    expect(result[1].remaining, 26);
+  });
+
+  test('night shift calculation crosses midnight', () {
+    final plan = ShiftPlan(
+      name: 'Nacht',
+      shiftNumber: 3,
+      startMinutes: 21 * 60 + 45,
+      items: const [
+        WorkItem(id: '1', name: '4261', quantity: 40, minutesPerPiece: 15),
+      ],
+    );
+    final result = calculateSchedule(plan, DateTime(2026, 8, 28)).single;
+    expect(result.wholePieces, 30);
+    expect(result.exactPieces, 30.8);
+    expect(result.end, DateTime(2026, 8, 29, 5, 33));
   });
 }

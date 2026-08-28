@@ -1,19 +1,17 @@
-# WerkMate Mobile 0.19.0
+# WerkMate Mobile
 
-Erster getrennter Flutter-Prototyp für Android und später iOS.
+Smartphone-first-Neustart von WerkMate. Die Python-/Tkinter-Anwendung bleibt
+als geprüfte fachliche Referenz erhalten.
 
-Bereits enthalten:
+Aktueller Umfang:
 
-- Schnellstart mit Menge und Stückzeit
-- optionale Auftrags- und Gesenknummer
-- Schichtprognose mit festen Pausen
-- laufender Einsatz mit geplanter Rückmeldezeit
-- getrennte Eingabe für bearbeitete und betrieblich gemeldete Stück
-- einfache mobile Historie und Guthabenänderung
-
-Dieser frühe Prototyp speichert seine Daten noch nicht dauerhaft und übernimmt
-noch nicht den Katalog oder die Datenbank der PC-App. Er dient zunächst dazu,
-Bedienung und mobile Darstellung zu testen.
+- Navigation `Heute`, `Planen`, `Pläne`, `Mehr`
+- mehrere Arbeiten als touchfreundliche Karten
+- Reihenfolge per langem Ziehen
+- feste Schichtpausen und Soll-Zeitberechnung
+- lokale Planspeicherung
+- manueller Arbeitsstart, Countdown, Überzeit und erneute Alarmzeit
+- kein automatischer Start der nächsten Arbeit
 
 ## Prüfen und starten
 
@@ -24,11 +22,8 @@ flutter test
 flutter run
 ```
 
-## APK bauen
+## Android-APK bauen
 
 ```powershell
 flutter build apk --release
 ```
-
-Die APK liegt anschließend unter
-`mobile\build\app\outputs\flutter-apk\app-release.apk`.
