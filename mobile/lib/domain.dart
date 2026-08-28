@@ -25,7 +25,11 @@ class ShiftTemplate {
     ShiftTemplate(3, 'Nachtschicht', 21, 45, 5, 45, 1, 45, 2, 3),
   ];
 
-  ShiftWindow onDate(DateTime day, {int? customStartMinutes}) {
+  ShiftWindow onDate(
+    DateTime day, {
+    int? customStartMinutes,
+    int overtimeHours = 0,
+  }) {
     DateTime at(int hour, int minute, [int addDays = 0]) =>
         DateTime(day.year, day.month, day.day + addDays, hour, minute);
     final overnight = endHour * 60 + endMinute <= startHour * 60 + startMinute;
@@ -33,7 +37,11 @@ class ShiftTemplate {
     final start = customStartMinutes == null
         ? shiftStart
         : at(customStartMinutes ~/ 60, customStartMinutes % 60);
-    final end = at(endHour, endMinute, overnight ? 1 : 0);
+    final end = at(
+      endHour,
+      endMinute,
+      overnight ? 1 : 0,
+    ).add(Duration(hours: overtimeHours));
     final pauseNextDay =
         overnight &&
         pauseHour * 60 + pauseMinute < startHour * 60 + startMinute;
@@ -133,21 +141,24 @@ class ShiftPlan {
     required this.name,
     required this.shiftNumber,
     required this.startMinutes,
+    this.overtimeHours = 0,
     required this.items,
   });
   final String name;
-  final int shiftNumber, startMinutes;
+  final int shiftNumber, startMinutes, overtimeHours;
   final List<WorkItem> items;
 
   ShiftPlan copyWith({
     String? name,
     int? shiftNumber,
     int? startMinutes,
+    int? overtimeHours,
     List<WorkItem>? items,
   }) => ShiftPlan(
     name: name ?? this.name,
     shiftNumber: shiftNumber ?? this.shiftNumber,
     startMinutes: startMinutes ?? this.startMinutes,
+    overtimeHours: overtimeHours ?? this.overtimeHours,
     items: items ?? this.items,
   );
 
@@ -155,6 +166,7 @@ class ShiftPlan {
     'name': name,
     'shiftNumber': shiftNumber,
     'startMinutes': startMinutes,
+    'overtimeHours': overtimeHours,
     'items': items.map((item) => item.toJson()).toList(),
   };
 
@@ -162,6 +174,7 @@ class ShiftPlan {
     name: json['name'] as String,
     shiftNumber: json['shiftNumber'] as int,
     startMinutes: json['startMinutes'] as int,
+    overtimeHours: json['overtimeHours'] as int? ?? 0,
     items: (json['items'] as List)
         .map(
           (item) => WorkItem.fromJson(Map<String, dynamic>.from(item as Map)),
@@ -174,7 +187,11 @@ List<ScheduleStep> calculateSchedule(ShiftPlan plan, DateTime date) {
   final template = ShiftTemplate.all.firstWhere(
     (s) => s.number == plan.shiftNumber,
   );
-  final shift = template.onDate(date, customStartMinutes: plan.startMinutes);
+  final shift = template.onDate(
+    date,
+    customStartMinutes: plan.startMinutes,
+    overtimeHours: plan.overtimeHours,
+  );
   if (shift.start.isBefore(template.onDate(date).start) ||
       !shift.start.isBefore(shift.end)) {
     throw ArgumentError(

@@ -288,6 +288,19 @@ class _PlanPageState extends State<PlanPage> {
     final template = ShiftTemplate.all.firstWhere(
       (s) => s.number == widget.plan.shiftNumber,
     );
+    final shift = template.onDate(
+      DateTime.now(),
+      customStartMinutes: widget.plan.startMinutes,
+      overtimeHours: widget.plan.overtimeHours,
+    );
+    final productiveHours =
+        productiveMinutes(
+          shift.start,
+          shift.end,
+          shift.pauseStart,
+          shift.pauseEnd,
+        ) /
+        60;
     return ResponsivePage(
       children: [
         const PageTitle(
@@ -341,6 +354,59 @@ class _PlanPageState extends State<PlanPage> {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: _pickStart,
                 ),
+                const Divider(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Überstunden',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          Text(
+                            widget.plan.overtimeHours == 0
+                                ? 'Normal · Ende ${hhmm(shift.end)} · ${_number(productiveHours)} Std. produktiv'
+                                : '+${widget.plan.overtimeHours} Std. · Ende ${hhmm(shift.end)} · ${_number(productiveHours)} Std. produktiv',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton.filledTonal(
+                      tooltip: 'Eine Überstunde entfernen',
+                      onPressed: widget.plan.overtimeHours == 0
+                          ? null
+                          : () => _setOvertime(widget.plan.overtimeHours - 1),
+                      icon: const Icon(Icons.remove),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(
+                        '+${widget.plan.overtimeHours}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    IconButton.filled(
+                      tooltip: 'Eine Überstunde hinzufügen',
+                      onPressed: () =>
+                          _setOvertime(widget.plan.overtimeHours + 1),
+                      icon: const Icon(Icons.add),
+                    ),
+                  ],
+                ),
+                if (widget.plan.overtimeHours > 0)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => _setOvertime(0),
+                      child: const Text('Auf Normalzeit zurücksetzen'),
+                    ),
+                  ),
                 Text(
                   'Feste Pause ${_hm(template.pauseHour, template.pauseMinute)}–${_hm(template.pauseEndHour, template.pauseEndMinute)} wird verrechnet.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -464,6 +530,10 @@ class _PlanPageState extends State<PlanPage> {
     error = null;
     setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) => _calculate());
+  }
+
+  void _setOvertime(int hours) {
+    _change(widget.plan.copyWith(overtimeHours: hours.clamp(0, 12)));
   }
 
   void _calculate() {

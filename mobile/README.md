@@ -17,6 +17,8 @@ Aktueller Umfang:
 - anhaltender Android-Arbeitsalarm am Soll-Ende, auch im Hintergrund
 - Alarm wird erst durch Rückmeldung, Verlängerung oder Stummschalten beendet
 - getrennte Auftragsnummer, Gesenknummer und Arbeitsgang je Arbeit
+- ganze Überstunden per Minus/Plus mit sofortiger Neuplanung
+- Android-Weckton statt des gewöhnlichen Benachrichtigungstons
 
 ## Prüfen und starten
 

@@ -49,13 +49,17 @@ class AlarmService {
     final scheduled = tz.TZDateTime.from(target, tz.local);
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
-        'work_target_alarm_v2',
+        'work_target_alarm_v3',
         'WerkMate Arbeitsalarm',
         channelDescription:
             'Erinnert an die Rückmeldung oder Verlängerung einer Arbeit.',
         importance: Importance.max,
         priority: Priority.high,
         playSound: true,
+        sound: UriAndroidNotificationSound(
+          'content://settings/system/alarm_alert',
+        ),
+        audioAttributesUsage: AudioAttributesUsage.alarm,
         enableVibration: true,
         category: AndroidNotificationCategory.alarm,
         ongoing: true,

@@ -29,6 +29,40 @@ void main() {
     expect(item.dieNumber, '8720');
   });
 
+  test('whole overtime hours extend shift capacity and planned end', () {
+    const work = WorkItem(
+      id: '1',
+      dieNumber: '4261',
+      quantity: 40,
+      minutesPerPiece: 15,
+    );
+    const normal = ShiftPlan(
+      name: 'Normal',
+      shiftNumber: 1,
+      startMinutes: 5 * 60 + 45,
+      items: [work],
+    );
+    final overtime = normal.copyWith(overtimeHours: 1);
+    final normalStep = calculateSchedule(normal, DateTime(2026, 8, 28)).single;
+    final overtimeStep = calculateSchedule(
+      overtime,
+      DateTime(2026, 8, 28),
+    ).single;
+
+    expect(normalStep.wholePieces, 30);
+    expect(overtimeStep.wholePieces, 34);
+    expect(overtimeStep.exactPieces, closeTo(34.8, 0.001));
+    expect(
+      hhmm(
+        ShiftTemplate.all.first
+            .onDate(DateTime(2026, 8, 28), overtimeHours: 1)
+            .end,
+      ),
+      '14:45',
+    );
+    expect(ShiftPlan.fromJson(overtime.toJson()).overtimeHours, 1);
+  });
+
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   testWidgets('starts with smartphone planning navigation', (tester) async {
