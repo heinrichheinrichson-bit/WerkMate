@@ -110,6 +110,7 @@ void main() {
         home: Scaffold(
           body: PlanPage(
             plan: plan,
+            activeDay: false,
             onChanged: (_) {},
             onSave: () {},
             onStart: (_) {},
@@ -122,6 +123,73 @@ void main() {
     expect(find.text('300 / 462 Min.'), findsOneWidget);
     expect(find.text('Noch 162 Min. zu verplanen'), findsOneWidget);
     expect(find.textContaining('300 Min. gesamt'), findsOneWidget);
+  });
+
+  testWidgets('active day is visible and finish requires confirmation', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    final steps = calculateSchedule(
+      const ShiftPlan(
+        name: 'Heute',
+        shiftNumber: 1,
+        startMinutes: 5 * 60 + 45,
+        items: [
+          WorkItem(
+            id: '1',
+            dieNumber: '1111',
+            quantity: 2,
+            minutesPerPiece: 10,
+          ),
+          WorkItem(
+            id: '2',
+            dieNumber: '2222',
+            quantity: 2,
+            minutesPerPiece: 10,
+          ),
+          WorkItem(
+            id: '3',
+            dieNumber: '3333',
+            quantity: 2,
+            minutesPerPiece: 10,
+          ),
+        ],
+      ),
+      DateTime(2099, 8, 28),
+    );
+    final restored = WorkSessionSnapshot(
+      steps: steps,
+      index: 0,
+      startedAt: DateTime(2099, 8, 28, 5, 45),
+      targetEnd: DateTime(2099, 8, 28, 6, 5),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TodayPage(
+            steps: steps,
+            restored: restored,
+            onSessionChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Heutiger Ablauf'), findsOneWidget);
+    for (final die in ['Ges. 1111', 'Ges. 2222', 'Ges. 3333']) {
+      expect(find.text(die), findsWidgets);
+    }
+    await tester.ensureVisible(find.text('ARBEIT FERTIG'));
+    await tester.tap(find.text('ARBEIT FERTIG'));
+    await tester.pumpAndSettle();
+    expect(find.text('Aktuelle Arbeit beenden?'), findsOneWidget);
+    expect(find.text('WEITERLAUFEN LASSEN'), findsOneWidget);
+    await tester.tap(find.text('WEITERLAUFEN LASSEN'));
+    await tester.pumpAndSettle();
+    expect(find.text('Aktuelle Arbeit beenden?'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.binding.setSurfaceSize(null);
   });
 
   setUp(() => SharedPreferences.setMockInitialValues({}));

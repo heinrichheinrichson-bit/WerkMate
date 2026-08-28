@@ -115,7 +115,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.6',
+              'Mobile 0.7',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -134,6 +134,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           ),
           PlanPage(
             plan: draft,
+            activeDay: activeSteps.isNotEmpty && restoredSession != null,
             onChanged: (value) => setState(() => draft = value),
             onSave: saveDraft,
             onStart: startPlan,
@@ -217,6 +218,34 @@ class _WerkMateHomeState extends State<WerkMateHome> {
   }
 
   Future<void> startPlan(List<ScheduleStep> steps) async {
+    if (activeSteps.isNotEmpty && restoredSession != null) {
+      final replace = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          icon: const Icon(Icons.warning_amber_rounded),
+          title: const Text('Laufenden Arbeitstag ersetzen?'),
+          content: const Text(
+            'Der aktuelle Auftrag, Countdown und Tagesablauf würden beendet. Das kann nicht rückgängig gemacht werden.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('ABBRECHEN'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('VERWERFEN UND ERSETZEN'),
+            ),
+          ],
+        ),
+      );
+      if (replace != true) return;
+      await AlarmService.instance.cancel();
+    }
     final snapshot = WorkSessionSnapshot(steps: steps, index: 0);
     await sessionStore.save(snapshot);
     if (!mounted) return;
@@ -234,7 +263,12 @@ class _WerkMateHomeState extends State<WerkMateHome> {
     } else {
       await sessionStore.save(snapshot);
     }
-    restoredSession = snapshot;
+    if (mounted) {
+      setState(() {
+        restoredSession = snapshot;
+        if (snapshot == null) activeSteps = [];
+      });
+    }
   }
 
   Future<void> duplicatePlan(ShiftPlan plan) async {
@@ -260,11 +294,13 @@ class PlanPage extends StatefulWidget {
   const PlanPage({
     super.key,
     required this.plan,
+    required this.activeDay,
     required this.onChanged,
     required this.onSave,
     required this.onStart,
   });
   final ShiftPlan plan;
+  final bool activeDay;
   final ValueChanged<ShiftPlan> onChanged;
   final VoidCallback onSave;
   final ValueChanged<List<ScheduleStep>> onStart;
@@ -331,6 +367,22 @@ class _PlanPageState extends State<PlanPage> {
           title: 'Schicht planen',
           subtitle: 'Was möchtest du heute schaffen?',
         ),
+        if (widget.activeDay) ...[
+          const SizedBox(height: 12),
+          const Card(
+            color: Color(0xfffff4d6),
+            child: ListTile(
+              leading: Icon(Icons.lock_clock),
+              title: Text(
+                'Ein Arbeitstag läuft',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: Text(
+                'Diese Planung ist nur ein Entwurf und verändert den laufenden Ablauf nicht.',
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         Card(
           child: Padding(
@@ -602,8 +654,12 @@ class _PlanPageState extends State<PlanPage> {
         const SizedBox(height: 8),
         FilledButton.icon(
           onPressed: schedule.isEmpty ? null : () => widget.onStart(schedule),
-          icon: const Icon(Icons.arrow_forward),
-          label: const Text('ZUM ARBEITSMODUS'),
+          icon: Icon(
+            widget.activeDay ? Icons.shield_outlined : Icons.arrow_forward,
+          ),
+          label: Text(
+            widget.activeDay ? 'AKTIVEN TAG ERSETZEN …' : 'ZUM ARBEITSMODUS',
+          ),
         ),
       ],
     );
@@ -950,17 +1006,70 @@ class _TodayPageState extends State<TodayPage> {
         ),
         const SizedBox(height: 14),
         Card(
-          child: ListTile(
-            leading: const CircleAvatar(child: Icon(Icons.skip_next)),
+          child: ExpansionTile(
+            initiallyExpanded: true,
+            leading: const CircleAvatar(child: Icon(Icons.view_timeline)),
             title: const Text(
-              'Danach',
-              style: TextStyle(fontWeight: FontWeight.w700),
+              'Heutiger Ablauf',
+              style: TextStyle(fontWeight: FontWeight.w800),
             ),
-            subtitle: Text(
-              index + 1 < widget.steps.length
-                  ? '${widget.steps[index + 1].item.name} · startet erst nach deiner Bestätigung'
-                  : 'Keine weitere Arbeit geplant',
-            ),
+            subtitle: Text('${index + 1} von ${widget.steps.length} aktiv'),
+            children: [
+              const Divider(height: 1),
+              ...widget.steps.asMap().entries.map((entry) {
+                final position = entry.key;
+                final planned = entry.value;
+                final isDone = position < index;
+                final isCurrent = position == index;
+                final shift = running
+                    ? targetEnd!.difference(step.end)
+                    : Duration.zero;
+                final shownStart = isCurrent && running
+                    ? startedAt!
+                    : planned.start.add(shift);
+                final shownEnd = isCurrent && running
+                    ? targetEnd!
+                    : planned.end.add(shift);
+                final status = isDone
+                    ? 'Erledigt'
+                    : isCurrent && running
+                    ? 'Aktiv · ${hhmm(shownStart)}–${hhmm(shownEnd)}'
+                    : isCurrent
+                    ? 'Als Nächstes · startet erst nach Bestätigung'
+                    : 'Voraussichtlich ${hhmm(shownStart)}–${hhmm(shownEnd)}';
+                return ListTile(
+                  leading: Icon(
+                    isDone
+                        ? Icons.check_circle
+                        : isCurrent
+                        ? Icons.play_circle_fill
+                        : Icons.radio_button_unchecked,
+                    color: isDone
+                        ? const Color(0xff12b76a)
+                        : isCurrent
+                        ? const Color(0xff2563eb)
+                        : const Color(0xff98a2b3),
+                  ),
+                  title: Text(
+                    planned.item.name,
+                    style: TextStyle(
+                      fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '$status\n${planned.wholePieces} Stück · ${_number(planned.item.minutesPerPiece)} min/Stück',
+                  ),
+                  isThreeLine: true,
+                );
+              }),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 4, 16, 14),
+                child: Text(
+                  'Folgeaufträge starten niemals automatisch.',
+                  style: TextStyle(color: Color(0xff667085)),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 18),
@@ -972,7 +1081,7 @@ class _TodayPageState extends State<TodayPage> {
           )
         else ...[
           FilledButton.icon(
-            onPressed: finish,
+            onPressed: confirmFinish,
             icon: const Icon(Icons.check),
             label: const Text('ARBEIT FERTIG'),
           ),
@@ -1030,6 +1139,30 @@ class _TodayPageState extends State<TodayPage> {
     }
   }
 
+  Future<void> confirmFinish() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Aktuelle Arbeit beenden?'),
+        content: Text(
+          '${widget.steps[index].item.name} wird als erledigt markiert. Der nächste Auftrag startet danach nicht automatisch.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('WEITERLAUFEN LASSEN'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('JA, ARBEIT BEENDEN'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) finish();
+  }
+
   void finish() {
     timer?.cancel();
     AlarmService.instance.cancel();
@@ -1053,6 +1186,7 @@ class _TodayPageState extends State<TodayPage> {
   }
 
   Future<void> extend() async {
+    final previous = targetEnd!;
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(targetEnd!),
@@ -1068,6 +1202,28 @@ class _TodayPageState extends State<TodayPage> {
     if (!candidate.isAfter(now)) {
       candidate = candidate.add(const Duration(days: 1));
     }
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Soll-Ende wirklich ändern?'),
+        content: Text(
+          'Bisher: ${hhmm(previous)}\nNeu: ${hhmm(candidate)}\n\nCountdown, Alarm und die voraussichtlichen Folgezeiten werden angepasst.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('ABBRECHEN'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('ENDZEIT ÄNDERN'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     setState(() {
       targetEnd = candidate;
       alarmed = false;

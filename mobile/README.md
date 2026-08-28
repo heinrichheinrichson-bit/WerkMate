@@ -22,6 +22,9 @@ Aktueller Umfang:
 - Schichtbelegung mit Kapazität, verplanten und noch offenen Minuten
 - wählbare Auf-/Abrundung mit beiden Endzeiten und einer Empfehlung
 - Restauftragsvolumen getrennt von der heutigen Schichtplanung
+- vollständiger Tagesablauf mit Status und voraussichtlichen Folgezeiten unter `Heute`
+- Sicherheitsabfragen vor Beenden, Zeitänderung oder Ersetzen eines aktiven Tages
+- Planentwürfe bleiben vollständig vom laufenden Arbeitstag getrennt
 
 ## Prüfen und starten
 
