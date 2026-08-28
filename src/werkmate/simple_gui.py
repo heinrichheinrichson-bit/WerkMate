@@ -14,6 +14,7 @@ from .cli import default_database_path
 from .database import WerkMateDatabase
 from .service import WerkMateService
 from .simple_plans import SimplePlanStore
+from .simple_work import WorkModeWindow, WorkStep
 from .timecalc import minutes_to_seconds, seconds_to_minutes
 
 
@@ -29,7 +30,7 @@ class PlanJob:
 
 
 class SimpleWerkMateApp(tk.Tk):
-    VERSION = "Simple 0.4"
+    VERSION = "Simple 0.5"
 
     def __init__(self, database_path=None) -> None:
         super().__init__()
@@ -43,6 +44,7 @@ class SimpleWerkMateApp(tk.Tk):
         self.loaded_plan_name: str | None = None
         self.plan_date = local_now().date()
         self.jobs: list[PlanJob] = []
+        self.calculated_steps: list[WorkStep] = []
         self._style()
         self._ui()
         self._load_catalog()
@@ -137,6 +139,11 @@ class SimpleWerkMateApp(tk.Tk):
         self.exact_result.pack(anchor="w", pady=(3, 12))
         self.result_lines = ttk.Label(result, justify="left")
         self.result_lines.pack(anchor="w")
+        self.work_button = ttk.Button(
+            result, text="ARBEITSMODUS ÖFFNEN", style="Primary.TButton",
+            command=self.open_work_mode, state="disabled",
+        )
+        self.work_button.pack(fill="x", side="bottom", pady=(16, 0))
 
     def _shift_labels(self) -> dict[int, str]:
         names = {1: "Frühschicht", 2: "Spätschicht", 3: "Nachtschicht"}
@@ -270,6 +277,8 @@ class SimpleWerkMateApp(tk.Tk):
             self._refresh_jobs()
 
     def _mark_changed(self) -> None:
+        self.calculated_steps.clear()
+        self.work_button.configure(state="disabled")
         if self.loaded_plan_name:
             self.saved_hint.configure(text=f"Geändert: {self.loaded_plan_name}")
         else:
@@ -281,6 +290,8 @@ class SimpleWerkMateApp(tk.Tk):
         self.main_result.configure(text="Noch keine Arbeiten geplant")
         self.exact_result.configure(text="")
         self.result_lines.configure(text="")
+        self.calculated_steps.clear()
+        self.work_button.configure(state="disabled")
         self.loaded_plan_name = None
         self.saved_hint.configure(text="Noch nicht gespeichert")
 
@@ -412,6 +423,7 @@ class SimpleWerkMateApp(tk.Tk):
             messagebox.showerror("Eingabe prüfen", str(error), parent=self)
             return
         cursor, scheduled, lines = start, 0, []
+        self.calculated_steps = []
         for index, job in enumerate(self.jobs, 1):
             if cursor >= shift.end:
                 lines.append(f"{index} · {job.die}: keine Schichtzeit mehr frei")
@@ -420,6 +432,10 @@ class SimpleWerkMateApp(tk.Tk):
             exact = str(result.exact_pieces.quantize(Decimal("0.1"))).replace(".", ",")
             lines.append(f"{index} · {job.die}   {cursor:%H:%M} → {result.planned_end:%H:%M}\n    {result.complete_pieces} ganze Stück ({exact} rechnerisch) · danach {result.remaining_pieces} offen")
             scheduled += result.complete_pieces
+            if result.complete_pieces:
+                self.calculated_steps.append(
+                    WorkStep(job.die, result.complete_pieces, result.complete_pieces * job.seconds_per_piece)
+                )
             cursor = result.planned_end
             if result.remaining_pieces:
                 for later_index, later in enumerate(self.jobs[index:], index + 1):
@@ -428,6 +444,15 @@ class SimpleWerkMateApp(tk.Tk):
         self.main_result.configure(text=f"{len(self.jobs)} Arbeiten · {scheduled} ganze Stück geplant")
         self.exact_result.configure(text=f"Soll-Ablauf {start:%H:%M}–{cursor:%H:%M} · Schichtende {shift.end:%H:%M}")
         self.result_lines.configure(text="\n\n".join(lines))
+        self.work_button.configure(state="normal" if self.calculated_steps else "disabled")
+
+    def open_work_mode(self) -> None:
+        if not self.calculated_steps:
+            messagebox.showinfo("Zuerst berechnen", "Bitte den Schichtplan zuerst berechnen.", parent=self)
+            return
+        start = datetime.combine(self.plan_date, datetime.strptime(self.start_entry.get().strip(), "%H:%M").time())
+        shift = self.service.shift_for_start(self._selected_shift(), start)
+        WorkModeWindow(self, list(self.calculated_steps), shift.breaks)
 
 
 def main() -> None:
