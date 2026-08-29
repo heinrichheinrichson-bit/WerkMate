@@ -158,7 +158,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.13',
+              'Mobile 0.13.2',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -194,7 +194,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           ),
           MorePage(
             reportCount: reports.length,
-            creditCount: calculateCreditBalances(reports).length,
+            creditCount: availableCredits().length,
             onHistory: openHistory,
             onCredits: openCredits,
             onSettings: openSettings,
@@ -316,12 +316,23 @@ class _WerkMateHomeState extends State<WerkMateHome> {
     if (mounted) {
       setState(() {
         restoredSession = snapshot;
-        if (snapshot == null) activeSteps = [];
+        activeSteps = snapshot?.steps ?? [];
       });
     }
   }
 
   Future<void> saveReport(WorkReport report) async {
+    final related = reports.where(
+      (saved) => sameWorkIdentity(saved.item, report.item),
+    );
+    final previousActual = related.fold<int>(
+      0,
+      (total, saved) => total + saved.actualPieces,
+    );
+    final previousReported = related.fold<int>(
+      0,
+      (total, saved) => total + saved.reportedPieces,
+    );
     if (report.item.isCredit) {
       final balances = calculateCreditBalances(reports);
       final matching = balances.where(
@@ -331,6 +342,19 @@ class _WerkMateHomeState extends State<WerkMateHome> {
       if (report.reportedPieces > available) {
         throw StateError(
           'Nur $available Stück Guthaben sind aktuell verfügbar.',
+        );
+      }
+    } else {
+      final totalActual = previousActual + report.actualPieces;
+      final totalReported = previousReported + report.reportedPieces;
+      if (totalActual > report.item.quantity) {
+        throw StateError(
+          'Damit wären $totalActual/${report.item.quantity} Stück bearbeitet. Mehr als die Auftragsmenge ist nicht erlaubt.',
+        );
+      }
+      if (totalReported > report.item.quantity) {
+        throw StateError(
+          'Damit wären $totalReported/${report.item.quantity} Stück gemeldet. Mehr als die Auftragsmenge ist nicht erlaubt.',
         );
       }
     }
@@ -365,14 +389,33 @@ class _WerkMateHomeState extends State<WerkMateHome> {
       context,
       MaterialPageRoute(
         builder: (context) => CreditPage(
-          balances: calculateCreditBalances(reports),
+          balances: availableCredits(),
           onPlan: addCreditToPlan,
+          onReviewReports: reviewCreditReports,
         ),
       ),
     );
   }
 
-  void addCreditToPlan(CreditBalance balance, int pieces) {
+  List<CreditBalance> availableCredits() {
+    var balances = calculateCreditBalances(reports);
+    balances = reservePlannedCredits(balances, draft.items);
+    final active = restoredSession;
+    if (active != null && active.index < active.steps.length) {
+      balances = reservePlannedCredits(
+        balances,
+        active.steps.skip(active.index).map((step) => step.item),
+      );
+    }
+    return balances;
+  }
+
+  void reviewCreditReports() {
+    Navigator.pop(context);
+    openHistory();
+  }
+
+  Future<void> addCreditToPlan(CreditBalance balance, int pieces) async {
     final source = balance.item;
     final credit = WorkItem(
       id: 'credit-${DateTime.now().microsecondsSinceEpoch}',
@@ -383,16 +426,90 @@ class _WerkMateHomeState extends State<WerkMateHome> {
       quantity: pieces,
       minutesPerPiece: source.minutesPerPiece,
     );
-    setState(() {
-      draft = draft.copyWith(items: [...draft.items, credit]);
-      page = 1;
-    });
+    var target = 'draft';
+    if (restoredSession != null && activeSteps.isNotEmpty) {
+      final selected = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Wohin soll das Guthaben?'),
+          content: const Text(
+            'Der laufende Auftrag und sein Countdown bleiben in beiden Fällen unverändert.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('ABBRECHEN'),
+            ),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(context, 'draft'),
+              child: const Text('NUR ZUM ENTWURF'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, 'active'),
+              child: const Text('AKTIVEM TAG ANHÄNGEN'),
+            ),
+          ],
+        ),
+      );
+      if (selected == null || !mounted) return;
+      target = selected;
+    }
+    if (target == 'active') {
+      await appendCreditToActiveDay(credit);
+    } else {
+      setState(() {
+        draft = draft.copyWith(items: [...draft.items, credit]);
+        page = 1;
+      });
+    }
+    if (!mounted) return;
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('$pieces Stück Guthaben zur Planung hinzugefügt.'),
       ),
     );
+  }
+
+  Future<void> appendCreditToActiveDay(WorkItem credit) async {
+    final session = restoredSession!;
+    final steps = [...session.steps];
+    final previous = steps.last;
+    final start = previous.end;
+    final end = addProductiveMinutes(
+      start,
+      credit.quantity * credit.minutesPerPiece,
+      previous.pauseStart,
+      previous.pauseEnd,
+    );
+    steps.add(
+      ScheduleStep(
+        item: credit,
+        start: start,
+        end: end,
+        pauseStart: previous.pauseStart,
+        pauseEnd: previous.pauseEnd,
+        capacityEnd: previous.capacityEnd,
+        wholePieces: credit.quantity,
+        recommendedPieces: credit.quantity,
+        exactPieces: credit.quantity.toDouble(),
+      ),
+    );
+    final updated = WorkSessionSnapshot(
+      steps: steps,
+      index: session.index,
+      startedAt: session.startedAt,
+      targetEnd: session.targetEnd,
+    );
+    await sessionStore.save(updated);
+    if (!mounted) return;
+    setState(() {
+      activeSteps = steps;
+      restoredSession = updated;
+      runKey++;
+      page = 0;
+    });
   }
 
   Future<void> duplicatePlan(ShiftPlan plan) async {
@@ -1726,9 +1843,7 @@ class _ReportSheetState extends State<ReportSheet> {
               child: const ListTile(
                 leading: Icon(Icons.savings_outlined),
                 title: Text('Guthaben abbauen'),
-                subtitle: Text(
-                  'Diese Stück wurden bereits körperlich bearbeitet.',
-                ),
+                subtitle: Text('Diese Stück wurden bereits bearbeitet.'),
               ),
             ),
             const SizedBox(height: 10),
@@ -1976,9 +2091,15 @@ class MorePage extends StatelessWidget {
 }
 
 class CreditPage extends StatelessWidget {
-  const CreditPage({super.key, required this.balances, required this.onPlan});
+  const CreditPage({
+    super.key,
+    required this.balances,
+    required this.onPlan,
+    required this.onReviewReports,
+  });
   final List<CreditBalance> balances;
-  final void Function(CreditBalance, int) onPlan;
+  final Future<void> Function(CreditBalance, int) onPlan;
+  final VoidCallback onReviewReports;
 
   Future<void> planCredit(BuildContext context, CreditBalance balance) async {
     final pieces = await showModalBottomSheet<int>(
@@ -1987,7 +2108,7 @@ class CreditPage extends StatelessWidget {
       useSafeArea: true,
       builder: (context) => CreditUseSheet(balance: balance),
     );
-    if (pieces != null && context.mounted) onPlan(balance, pieces);
+    if (pieces != null && context.mounted) await onPlan(balance, pieces);
   }
 
   @override
@@ -2004,7 +2125,7 @@ class CreditPage extends StatelessWidget {
             children: [
               const PageTitle(
                 title: 'Mein Guthaben',
-                subtitle: 'Bearbeitete, aber noch nicht gemeldete Stück',
+                subtitle: 'Fertig bearbeitete, aber noch nicht gemeldete Stück',
               ),
               const SizedBox(height: 16),
               ...balances.map(
@@ -2025,7 +2146,7 @@ class CreditPage extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '${balance.producedPieces}/${balance.item.quantity} körperlich bearbeitet · ${balance.reportedPieces}/${balance.item.quantity} gemeldet',
+                            '${balance.producedPieces}/${balance.item.quantity} bearbeitet · ${balance.reportedPieces}/${balance.item.quantity} gemeldet',
                           ),
                           const SizedBox(height: 8),
                           Text(
@@ -2040,6 +2161,13 @@ class CreditPage extends StatelessWidget {
                             onPressed: () => planCredit(context, balance),
                             icon: const Icon(Icons.add_task),
                             label: const Text('IN DIE PLANUNG ÜBERNEHMEN'),
+                          ),
+                          TextButton.icon(
+                            onPressed: onReviewReports,
+                            icon: const Icon(Icons.manage_history),
+                            label: const Text(
+                              'FEHLERHAFTE RÜCKMELDUNG PRÜFEN ODER LÖSCHEN',
+                            ),
                           ),
                         ],
                       ),

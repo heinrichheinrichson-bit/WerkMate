@@ -126,11 +126,15 @@ List<CreditBalance> calculateCreditBalances(List<WorkReport> reports) {
       0,
       (total, report) => total + report.reportedPieces,
     );
-    if (produced > reported) {
-      final source = entries.lastWhere(
-        (report) => !report.item.isCredit,
-        orElse: () => entries.last,
-      );
+    final source = entries.lastWhere(
+      (report) => !report.item.isCredit,
+      orElse: () => entries.last,
+    );
+    final validTotals =
+        produced == source.item.quantity &&
+        reported >= 0 &&
+        reported <= source.item.quantity;
+    if (validTotals && produced > reported) {
       result.add(
         CreditBalance(
           item: source.item,
@@ -142,6 +146,27 @@ List<CreditBalance> calculateCreditBalances(List<WorkReport> reports) {
   }
   result.sort((a, b) => a.item.name.compareTo(b.item.name));
   return result;
+}
+
+List<CreditBalance> reservePlannedCredits(
+  List<CreditBalance> balances,
+  Iterable<WorkItem> plannedItems,
+) {
+  return balances
+      .map((balance) {
+        final reserved = plannedItems
+            .where(
+              (item) => item.isCredit && sameWorkIdentity(item, balance.item),
+            )
+            .fold<int>(0, (total, item) => total + item.quantity);
+        return CreditBalance(
+          item: balance.item,
+          producedPieces: balance.producedPieces,
+          reportedPieces: balance.reportedPieces + reserved,
+        );
+      })
+      .where((balance) => balance.availablePieces > 0)
+      .toList();
 }
 
 class ReportStore {

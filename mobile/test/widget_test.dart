@@ -164,6 +164,57 @@ void main() {
     expect(balances.single.availableMinutes, 45);
   });
 
+  test('incomplete or impossible totals never become credit', () {
+    final base = DateTime(2026, 8, 29, 8);
+    WorkReport report(int quantity, int actual, int reported) => WorkReport(
+      id: '$quantity-$actual-$reported',
+      item: WorkItem(
+        id: 'invalid-$quantity',
+        orderNumber: 'ORDER-$quantity',
+        dieNumber: '1111',
+        quantity: quantity,
+        minutesPerPiece: 15,
+      ),
+      plannedPieces: actual,
+      actualPieces: actual,
+      reportedPieces: reported,
+      startedAt: base,
+      endedAt: base,
+      plannedEnd: base,
+      completedOrder: false,
+      note: '',
+    );
+
+    expect(calculateCreditBalances([report(20, 10, 5)]), isEmpty);
+    expect(calculateCreditBalances([report(10, 10, 15)]), isEmpty);
+  });
+
+  test('planned credit is reserved and cannot be offered twice', () {
+    const item = WorkItem(
+      id: 'source',
+      orderNumber: '40245678',
+      dieNumber: '1111',
+      operation: 'FP',
+      quantity: 10,
+      minutesPerPiece: 15,
+    );
+    const balance = CreditBalance(
+      item: item,
+      producedPieces: 10,
+      reportedPieces: 5,
+    );
+    const reservation = WorkItem(
+      id: 'reserved',
+      orderNumber: '40245678',
+      dieNumber: '1111',
+      operation: 'FP',
+      isCredit: true,
+      quantity: 5,
+      minutesPerPiece: 15,
+    );
+    expect(reservePlannedCredits([balance], [reservation]), isEmpty);
+  });
+
   test('work identity separates order, die and operation', () {
     const item = WorkItem(
       id: '1',
