@@ -41,7 +41,7 @@ Aktueller Umfang:
 - kontrastreicher Countdown mit Restminuten, Prozent und Zeitfortschritt
 - Guthaben automatisch aus bearbeiteten minus gemeldeten Stück berechnen
 - Guthaben nach Auftrag, Gesenk und Arbeitsgang gebündelt anzeigen
-- Guthaben nur bei vollständig bearbeiteter Gesamtmenge erzeugen
+- Guthaben als Differenz aus bisher bearbeiteten und gemeldeten Stück erzeugen
 - Bearbeitungs- und Meldesummen hart auf die Auftragsmenge begrenzen
 - eingeplantes Guthaben sofort reservieren und Doppelplanung verhindern
 - Guthaben wahlweise sicher an den aktiven Tag anhängen oder nur vormerken

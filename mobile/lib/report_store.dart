@@ -131,9 +131,10 @@ List<CreditBalance> calculateCreditBalances(List<WorkReport> reports) {
       orElse: () => entries.last,
     );
     final validTotals =
-        produced == source.item.quantity &&
+        produced >= 0 &&
+        produced <= source.item.quantity &&
         reported >= 0 &&
-        reported <= source.item.quantity;
+        reported <= produced;
     if (validTotals && produced > reported) {
       result.add(
         CreditBalance(

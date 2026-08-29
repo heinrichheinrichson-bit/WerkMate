@@ -164,7 +164,7 @@ void main() {
     expect(balances.single.availableMinutes, 45);
   });
 
-  test('incomplete or impossible totals never become credit', () {
+  test('partial work becomes credit but impossible totals do not', () {
     final base = DateTime(2026, 8, 29, 8);
     WorkReport report(int quantity, int actual, int reported) => WorkReport(
       id: '$quantity-$actual-$reported',
@@ -185,7 +185,8 @@ void main() {
       note: '',
     );
 
-    expect(calculateCreditBalances([report(20, 10, 5)]), isEmpty);
+    final partial = calculateCreditBalances([report(20, 10, 5)]);
+    expect(partial.single.availablePieces, 5);
     expect(calculateCreditBalances([report(10, 10, 15)]), isEmpty);
   });
 

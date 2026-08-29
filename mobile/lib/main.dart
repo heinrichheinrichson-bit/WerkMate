@@ -158,7 +158,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.13.2',
+              'Mobile 0.13.3',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -355,6 +355,11 @@ class _WerkMateHomeState extends State<WerkMateHome> {
       if (totalReported > report.item.quantity) {
         throw StateError(
           'Damit wären $totalReported/${report.item.quantity} Stück gemeldet. Mehr als die Auftragsmenge ist nicht erlaubt.',
+        );
+      }
+      if (totalReported > totalActual) {
+        throw StateError(
+          'Es können nicht mehr Stück gemeldet als bearbeitet sein ($totalReported/$totalActual). Nutze vorhandenes Guthaben über den Guthabenbereich.',
         );
       }
     }
@@ -2147,6 +2152,9 @@ class CreditPage extends StatelessWidget {
                           const SizedBox(height: 8),
                           Text(
                             '${balance.producedPieces}/${balance.item.quantity} bearbeitet · ${balance.reportedPieces}/${balance.item.quantity} gemeldet',
+                          ),
+                          Text(
+                            '${balance.item.quantity - balance.producedPieces} Stück noch zu bearbeiten',
                           ),
                           const SizedBox(height: 8),
                           Text(
