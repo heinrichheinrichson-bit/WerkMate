@@ -122,6 +122,48 @@ void main() {
     );
   });
 
+  test('credit is produced and can be partially consumed', () {
+    const source = WorkItem(
+      id: 'credit-source',
+      orderNumber: '40245678',
+      dieNumber: '1111',
+      operation: 'FP',
+      quantity: 10,
+      minutesPerPiece: 15,
+    );
+    final base = DateTime(2026, 8, 29, 8);
+    WorkReport report(WorkItem item, int actual, int reported) => WorkReport(
+      id: '${item.id}-$actual-$reported',
+      item: item,
+      plannedPieces: 10,
+      actualPieces: actual,
+      reportedPieces: reported,
+      startedAt: base,
+      endedAt: base.add(const Duration(minutes: 10)),
+      plannedEnd: base.add(const Duration(minutes: 10)),
+      completedOrder: false,
+      note: '',
+    );
+
+    final produced = report(source, 10, 5);
+    final creditItem = WorkItem(
+      id: 'credit-use',
+      orderNumber: source.orderNumber,
+      dieNumber: source.dieNumber,
+      operation: source.operation,
+      isCredit: true,
+      quantity: 2,
+      minutesPerPiece: source.minutesPerPiece,
+    );
+    final balances = calculateCreditBalances([
+      produced,
+      report(creditItem, 0, 2),
+    ]);
+    expect(balances, hasLength(1));
+    expect(balances.single.availablePieces, 3);
+    expect(balances.single.availableMinutes, 45);
+  });
+
   test('work identity separates order, die and operation', () {
     const item = WorkItem(
       id: '1',

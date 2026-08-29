@@ -158,7 +158,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.12.1',
+              'Mobile 0.13',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -194,7 +194,9 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           ),
           MorePage(
             reportCount: reports.length,
+            creditCount: calculateCreditBalances(reports).length,
             onHistory: openHistory,
+            onCredits: openCredits,
             onSettings: openSettings,
           ),
         ],
@@ -320,6 +322,18 @@ class _WerkMateHomeState extends State<WerkMateHome> {
   }
 
   Future<void> saveReport(WorkReport report) async {
+    if (report.item.isCredit) {
+      final balances = calculateCreditBalances(reports);
+      final matching = balances.where(
+        (balance) => sameWorkIdentity(balance.item, report.item),
+      );
+      final available = matching.isEmpty ? 0 : matching.first.availablePieces;
+      if (report.reportedPieces > available) {
+        throw StateError(
+          'Nur $available Stück Guthaben sind aktuell verfügbar.',
+        );
+      }
+    }
     await reportStore.append(report);
     final value = await reportStore.load();
     if (mounted) setState(() => reports = value);
@@ -342,6 +356,41 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           themeMode: widget.themeMode,
           onThemeChanged: widget.onThemeChanged,
         ),
+      ),
+    );
+  }
+
+  Future<void> openCredits() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CreditPage(
+          balances: calculateCreditBalances(reports),
+          onPlan: addCreditToPlan,
+        ),
+      ),
+    );
+  }
+
+  void addCreditToPlan(CreditBalance balance, int pieces) {
+    final source = balance.item;
+    final credit = WorkItem(
+      id: 'credit-${DateTime.now().microsecondsSinceEpoch}',
+      orderNumber: source.orderNumber,
+      dieNumber: source.dieNumber,
+      operation: source.operation,
+      isCredit: true,
+      quantity: pieces,
+      minutesPerPiece: source.minutesPerPiece,
+    );
+    setState(() {
+      draft = draft.copyWith(items: [...draft.items, credit]);
+      page = 1;
+    });
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$pieces Stück Guthaben zur Planung hinzugefügt.'),
       ),
     );
   }
@@ -615,7 +664,7 @@ class _PlanPageState extends State<PlanPage> {
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     subtitle: Text(
-                      '${item.quantity} Stück · ${_number(item.minutesPerPiece)} min/Stück · ${_number(item.quantity * item.minutesPerPiece)} Min. gesamt',
+                      '${item.isCredit ? 'Guthaben · ' : ''}${item.quantity} Stück · ${_number(item.minutesPerPiece)} min/Stück · ${_number(item.quantity * item.minutesPerPiece)} Min. gesamt',
                     ),
                     trailing: PopupMenuButton<String>(
                       onSelected: (value) {
@@ -1303,8 +1352,19 @@ class _TodayPageState extends State<TodayPage> {
       completedOrder: draft.completedOrder,
       note: draft.note,
     );
-    await widget.onReport(report);
-    if (mounted) finish(draft.endedAt);
+    try {
+      await widget.onReport(report);
+      if (mounted) finish(draft.endedAt);
+    } catch (exception) {
+      if (!mounted) return;
+      final message = exception
+          .toString()
+          .replaceFirst('Bad state: ', '')
+          .replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   void finish(DateTime reportedEnd) {
@@ -1560,7 +1620,7 @@ class _ReportSheetState extends State<ReportSheet> {
   void initState() {
     super.initState();
     actualController = TextEditingController(
-      text: '${widget.step.wholePieces}',
+      text: widget.step.item.isCredit ? '0' : '${widget.step.wholePieces}',
     );
     reportedController = TextEditingController(
       text: '${widget.step.wholePieces}',
@@ -1660,31 +1720,52 @@ class _ReportSheetState extends State<ReportSheet> {
             ),
           ),
           const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: actualController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Tatsächlich bearbeitet',
-                    suffixText: 'Stk',
-                  ),
+          if (widget.step.item.isCredit) ...[
+            Card(
+              margin: EdgeInsets.zero,
+              child: const ListTile(
+                leading: Icon(Icons.savings_outlined),
+                title: Text('Guthaben abbauen'),
+                subtitle: Text(
+                  'Diese Stück wurden bereits körperlich bearbeitet.',
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: reportedController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Betrieblich rückgemeldet',
-                    suffixText: 'Stk',
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: reportedController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Aus Guthaben rückmelden',
+                suffixText: 'Stk',
+              ),
+            ),
+          ] else
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: actualController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Tatsächlich bearbeitet',
+                      suffixText: 'Stk',
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: reportedController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Betrieblich rückgemeldet',
+                      suffixText: 'Stk',
+                    ),
+                  ),
+                ),
+              ],
+            ),
           const SizedBox(height: 10),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -1740,17 +1821,18 @@ class _ReportSheetState extends State<ReportSheet> {
             ),
           ),
           const SizedBox(height: 8),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: completedOrder,
-            onChanged: (value) => setState(() => completedOrder = value),
-            title: const Text('Gesamtauftrag vollständig beendet'),
-            subtitle: Text(
-              completedOrder
-                  ? 'Der gesamte Auftrag wird als beendet vermerkt.'
-                  : 'Teilrückmeldung – offene Stück bleiben bestehen.',
+          if (!widget.step.item.isCredit)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: completedOrder,
+              onChanged: (value) => setState(() => completedOrder = value),
+              title: const Text('Gesamtauftrag vollständig beendet'),
+              subtitle: Text(
+                completedOrder
+                    ? 'Der gesamte Auftrag wird als beendet vermerkt.'
+                    : 'Teilrückmeldung – offene Stück bleiben bestehen.',
+              ),
             ),
-          ),
           if (error != null) ...[
             const SizedBox(height: 4),
             Text(error!, style: const TextStyle(color: Colors.red)),
@@ -1830,11 +1912,13 @@ class MorePage extends StatelessWidget {
   const MorePage({
     super.key,
     required this.reportCount,
+    required this.creditCount,
     required this.onHistory,
+    required this.onCredits,
     required this.onSettings,
   });
-  final int reportCount;
-  final VoidCallback onHistory, onSettings;
+  final int reportCount, creditCount;
+  final VoidCallback onHistory, onCredits, onSettings;
 
   @override
   Widget build(BuildContext context) => ResponsivePage(
@@ -1847,6 +1931,18 @@ class MorePage extends StatelessWidget {
       Card(
         child: Column(
           children: [
+            ListTile(
+              leading: const Icon(Icons.savings_outlined),
+              title: const Text('Guthaben'),
+              subtitle: Text(
+                creditCount == 1
+                    ? '1 Auftrag mit verfügbarem Guthaben'
+                    : '$creditCount Aufträge mit verfügbarem Guthaben',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: onCredits,
+            ),
+            const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.history),
               title: const Text('Meine Rückmeldungen'),
@@ -1877,6 +1973,231 @@ class MorePage extends StatelessWidget {
       ),
     ],
   );
+}
+
+class CreditPage extends StatelessWidget {
+  const CreditPage({super.key, required this.balances, required this.onPlan});
+  final List<CreditBalance> balances;
+  final void Function(CreditBalance, int) onPlan;
+
+  Future<void> planCredit(BuildContext context, CreditBalance balance) async {
+    final pieces = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => CreditUseSheet(balance: balance),
+    );
+    if (pieces != null && context.mounted) onPlan(balance, pieces);
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Guthaben')),
+    body: balances.isEmpty
+        ? const Center(
+            child: EmptyCard(
+              icon: Icons.savings_outlined,
+              text: 'Aktuell ist kein Guthaben verfügbar.',
+            ),
+          )
+        : ResponsivePage(
+            children: [
+              const PageTitle(
+                title: 'Mein Guthaben',
+                subtitle: 'Bearbeitete, aber noch nicht gemeldete Stück',
+              ),
+              const SizedBox(height: 16),
+              ...balances.map(
+                (balance) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            balance.item.name,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${balance.producedPieces}/${balance.item.quantity} körperlich bearbeitet · ${balance.reportedPieces}/${balance.item.quantity} gemeldet',
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${balance.availablePieces} Stück Guthaben · ${_number(balance.availableMinutes)} Min.',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          FilledButton.tonalIcon(
+                            onPressed: () => planCredit(context, balance),
+                            icon: const Icon(Icons.add_task),
+                            label: const Text('IN DIE PLANUNG ÜBERNEHMEN'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+  );
+}
+
+class CreditUseSheet extends StatefulWidget {
+  const CreditUseSheet({super.key, required this.balance});
+  final CreditBalance balance;
+
+  @override
+  State<CreditUseSheet> createState() => _CreditUseSheetState();
+}
+
+class _CreditUseSheetState extends State<CreditUseSheet> {
+  bool byMinutes = false;
+  bool roundUp = true;
+  late final TextEditingController controller;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = TextEditingController(
+      text: '${widget.balance.availablePieces}',
+    );
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  double? get entered =>
+      double.tryParse(controller.text.trim().replaceAll(',', '.'));
+  double get exactPieces =>
+      (entered ?? 0) / widget.balance.item.minutesPerPiece;
+  int get minutePieces => roundUp ? exactPieces.ceil() : exactPieces.floor();
+
+  void changeMode(bool minutes) {
+    setState(() {
+      byMinutes = minutes;
+      controller.text = minutes
+          ? _number(widget.balance.availableMinutes)
+          : '${widget.balance.availablePieces}';
+      error = null;
+    });
+  }
+
+  void submit() {
+    final pieces = byMinutes ? minutePieces : entered?.toInt();
+    if (entered == null || entered! <= 0 || pieces == null || pieces <= 0) {
+      setState(() => error = 'Bitte eine gültige Menge eingeben.');
+      return;
+    }
+    if (!byMinutes && entered! != pieces) {
+      setState(() => error = 'Stückzahl bitte ohne Dezimalstellen eingeben.');
+      return;
+    }
+    if (pieces > widget.balance.availablePieces) {
+      setState(
+        () => error =
+            'Es sind nur ${widget.balance.availablePieces} Stück Guthaben verfügbar.',
+      );
+      return;
+    }
+    Navigator.pop(context, pieces);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lower = exactPieces.floor();
+    final upper = exactPieces.ceil();
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        18,
+        20,
+        20 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Guthaben einplanen',
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            Text(widget.balance.item.name),
+            const SizedBox(height: 16),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('Stück')),
+                ButtonSegment(value: true, label: Text('Minuten')),
+              ],
+              selected: {byMinutes},
+              onSelectionChanged: (value) => changeMode(value.single),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              onChanged: (_) => setState(() => error = null),
+              decoration: InputDecoration(
+                labelText: byMinutes ? 'Gewünschte Minuten' : 'Stückzahl',
+                suffixText: byMinutes ? 'Min.' : 'Stk',
+              ),
+            ),
+            if (byMinutes && entered != null && entered! > 0) ...[
+              const SizedBox(height: 10),
+              Text('${_number(exactPieces)} Stück rechnerisch'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  ChoiceChip(
+                    selected: !roundUp,
+                    onSelected: (_) => setState(() => roundUp = false),
+                    label: Text('$lower Stück abrunden'),
+                  ),
+                  ChoiceChip(
+                    selected: roundUp,
+                    onSelected: (_) => setState(() => roundUp = true),
+                    label: Text('$upper Stück aufrunden'),
+                  ),
+                ],
+              ),
+            ],
+            if (error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+            const SizedBox(height: 18),
+            FilledButton(
+              onPressed: submit,
+              child: const Text('ZUR PLANUNG HINZUFÜGEN'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class SettingsPage extends StatefulWidget {
@@ -2074,7 +2395,9 @@ class ReportHistoryCard extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         subtitle: Text(
-          '${_date(report.endedAt)} · ${hhmm(report.startedAt)}–${hhmm(report.endedAt)}\n${report.actualPieces} bearbeitet · ${report.reportedPieces} gemeldet',
+          report.item.isCredit
+              ? '${_date(report.endedAt)} · ${hhmm(report.startedAt)}–${hhmm(report.endedAt)}\n${report.reportedPieces} Stück aus Guthaben gemeldet'
+              : '${_date(report.endedAt)} · ${hhmm(report.startedAt)}–${hhmm(report.endedAt)}\n${report.actualPieces} bearbeitet · ${report.reportedPieces} gemeldet',
         ),
         children: [
           const Divider(),
@@ -2091,24 +2414,33 @@ class ReportHistoryCard extends StatelessWidget {
                 ? const Color(0xff067647)
                 : const Color(0xff667085),
           ),
-          _DeviationRow(
-            icon: Icons.inventory_2_outlined,
-            label: pieces > 0
-                ? '+$pieces Stück mehr als geplant'
-                : pieces < 0
-                ? '${pieces.abs()} Stück weniger als geplant'
-                : 'Stückzahl genau eingehalten',
-            color: pieces > 0
-                ? const Color(0xff067647)
-                : pieces < 0
-                ? const Color(0xffb42318)
-                : const Color(0xff667085),
-          ),
+          if (report.item.isCredit)
+            _DeviationRow(
+              icon: Icons.savings_outlined,
+              label: '${report.reportedPieces} Stück Guthaben verwendet',
+              color: const Color(0xff2563eb),
+            )
+          else
+            _DeviationRow(
+              icon: Icons.inventory_2_outlined,
+              label: pieces > 0
+                  ? '+$pieces Stück mehr als geplant'
+                  : pieces < 0
+                  ? '${pieces.abs()} Stück weniger als geplant'
+                  : 'Stückzahl genau eingehalten',
+              color: pieces > 0
+                  ? const Color(0xff067647)
+                  : pieces < 0
+                  ? const Color(0xffb42318)
+                  : const Color(0xff667085),
+            ),
           const SizedBox(height: 6),
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              report.completedOrder
+              report.item.isCredit
+                  ? 'Guthabenrückmeldung'
+                  : report.completedOrder
                   ? 'Gesamtauftrag vollständig beendet'
                   : 'Teilrückmeldung',
             ),

@@ -64,11 +64,13 @@ class WorkItem {
     required this.dieNumber,
     this.orderNumber = '',
     this.operation = '',
+    this.isCredit = false,
     this.roundingChoice = RoundingChoice.automatic,
     required this.quantity,
     required this.minutesPerPiece,
   });
   final String id, orderNumber, dieNumber, operation;
+  final bool isCredit;
   final RoundingChoice roundingChoice;
   final int quantity;
   final double minutesPerPiece;
@@ -87,6 +89,7 @@ class WorkItem {
     'orderNumber': orderNumber,
     'dieNumber': dieNumber,
     'operation': operation,
+    'isCredit': isCredit,
     'roundingChoice': roundingChoice.name,
     'quantity': quantity,
     'minutesPerPiece': minutesPerPiece,
@@ -97,6 +100,7 @@ class WorkItem {
     orderNumber: json['orderNumber'] as String? ?? '',
     dieNumber: json['dieNumber'] as String? ?? json['name'] as String? ?? '',
     operation: json['operation'] as String? ?? '',
+    isCredit: json['isCredit'] as bool? ?? false,
     roundingChoice: RoundingChoice.values.firstWhere(
       (value) => value.name == json['roundingChoice'],
       orElse: () => RoundingChoice.automatic,
@@ -110,6 +114,7 @@ class WorkItem {
     orderNumber: orderNumber,
     dieNumber: dieNumber,
     operation: operation,
+    isCredit: isCredit,
     roundingChoice: roundingChoice ?? this.roundingChoice,
     quantity: quantity,
     minutesPerPiece: minutesPerPiece,

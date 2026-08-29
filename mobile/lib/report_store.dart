@@ -87,6 +87,63 @@ class WorkReport {
   );
 }
 
+class CreditBalance {
+  const CreditBalance({
+    required this.item,
+    required this.producedPieces,
+    required this.reportedPieces,
+  });
+
+  final WorkItem item;
+  final int producedPieces, reportedPieces;
+  int get availablePieces => producedPieces - reportedPieces;
+  double get availableMinutes => availablePieces * item.minutesPerPiece;
+}
+
+bool sameWorkIdentity(WorkItem a, WorkItem b) =>
+    a.orderNumber.trim().toUpperCase() == b.orderNumber.trim().toUpperCase() &&
+    a.dieNumber.trim().toUpperCase() == b.dieNumber.trim().toUpperCase() &&
+    a.operation.trim().toUpperCase() == b.operation.trim().toUpperCase();
+
+List<CreditBalance> calculateCreditBalances(List<WorkReport> reports) {
+  final grouped = <String, List<WorkReport>>{};
+  for (final report in reports) {
+    final item = report.item;
+    final key = [
+      item.orderNumber.trim().toUpperCase(),
+      item.dieNumber.trim().toUpperCase(),
+      item.operation.trim().toUpperCase(),
+    ].join('|');
+    grouped.putIfAbsent(key, () => []).add(report);
+  }
+  final result = <CreditBalance>[];
+  for (final entries in grouped.values) {
+    final produced = entries.fold<int>(
+      0,
+      (total, report) => total + report.actualPieces,
+    );
+    final reported = entries.fold<int>(
+      0,
+      (total, report) => total + report.reportedPieces,
+    );
+    if (produced > reported) {
+      final source = entries.lastWhere(
+        (report) => !report.item.isCredit,
+        orElse: () => entries.last,
+      );
+      result.add(
+        CreditBalance(
+          item: source.item,
+          producedPieces: produced,
+          reportedPieces: reported,
+        ),
+      );
+    }
+  }
+  result.sort((a, b) => a.item.name.compareTo(b.item.name));
+  return result;
+}
+
 class ReportStore {
   static const _key = 'work_reports_v1';
 

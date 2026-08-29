@@ -39,6 +39,9 @@ Aktueller Umfang:
 - einzelne Rückmeldungen nach Sicherheitsabfrage löschen
 - lokal gespeicherter System-, Hell- oder Dunkelmodus
 - kontrastreicher Countdown mit Restminuten, Prozent und Zeitfortschritt
+- Guthaben automatisch aus bearbeiteten minus gemeldeten Stück berechnen
+- Guthaben nach Auftrag, Gesenk und Arbeitsgang gebündelt anzeigen
+- Guthaben nach Stück oder Minuten teilweise in neue Planungen übernehmen
 
 Als nächste getrennte Bereiche sind die Historie sowie Einstellungen für
 System-, Hell- und Dunkelmodus vorgesehen.
