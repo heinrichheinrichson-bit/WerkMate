@@ -158,7 +158,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.12',
+              'Mobile 0.12.1',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -1010,6 +1010,13 @@ class _TodayPageState extends State<TodayPage> {
         ? targetEnd!.difference(startedAt!).inMilliseconds
         : 1;
     final elapsed = running ? now.difference(startedAt!).inMilliseconds : 0;
+    final progress = running && total > 0
+        ? (elapsed / total).clamp(0.0, 1.0)
+        : 0.0;
+    final totalMinutes = running ? (total / 60000).ceil() : 0;
+    final elapsedMinutes = running
+        ? (elapsed.clamp(0, total > 0 ? total : 0) / 60000).floor()
+        : 0;
     return ResponsivePage(
       children: [
         PageTitle(
@@ -1065,19 +1072,34 @@ class _TodayPageState extends State<TodayPage> {
                     fontWeight: FontWeight.w900,
                     color: overdue
                         ? const Color(0xffb42318)
-                        : const Color(0xff101828),
+                        : Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
+                if (running) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    overdue
+                        ? '${(difference.inSeconds.abs() / 60).ceil()} Min. über der geplanten Rückmeldezeit'
+                        : 'Noch ${(difference.inSeconds / 60).ceil()} Min. bis zur geplanten Rückmeldung',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 LinearProgressIndicator(
-                  value: running ? (elapsed / total).clamp(0, 1) : 0,
-                  minHeight: 10,
+                  value: progress,
+                  minHeight: 14,
                   borderRadius: BorderRadius.circular(99),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
+                if (running)
+                  Text(
+                    '${(progress * 100).floor()} % · $elapsedMinutes von $totalMinutes Min.',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                const SizedBox(height: 8),
                 Text(
                   running
-                      ? 'Start ${hhmm(startedAt!)} · Soll-Ende ${hhmm(targetEnd!)}'
+                      ? 'Soll ${hhmm(step.start)}–${hhmm(targetEnd!)} · gestartet ${hhmm(startedAt!)}'
                       : 'Start und Soll-Ende werden erst beim Start gesetzt.',
                 ),
               ],

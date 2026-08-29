@@ -294,6 +294,11 @@ void main() {
     );
 
     expect(find.text('Heutiger Ablauf'), findsOneWidget);
+    expect(
+      find.textContaining('bis zur geplanten Rückmeldung'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('von 20 Min.'), findsOneWidget);
     for (final die in ['Ges. 1111', 'Ges. 2222', 'Ges. 3333']) {
       expect(find.text(die), findsWidgets);
     }

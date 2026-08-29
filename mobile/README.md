@@ -38,6 +38,7 @@ Aktueller Umfang:
 - Verzug und Minderstück rot, frühere Fertigstellung und Mehrstück grün
 - einzelne Rückmeldungen nach Sicherheitsabfrage löschen
 - lokal gespeicherter System-, Hell- oder Dunkelmodus
+- kontrastreicher Countdown mit Restminuten, Prozent und Zeitfortschritt
 
 Als nächste getrennte Bereiche sind die Historie sowie Einstellungen für
 System-, Hell- und Dunkelmodus vorgesehen.
