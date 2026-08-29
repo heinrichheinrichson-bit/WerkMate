@@ -117,7 +117,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.9',
+              'Mobile 0.10',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -1068,13 +1068,45 @@ class _TodayPageState extends State<TodayPage> {
                     '$status\n${planned.wholePieces} Stück · ${_number(planned.item.minutesPerPiece)} min/Stück',
                   ),
                   isThreeLine: true,
+                  trailing: position > index
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: 'Eine Position nach oben',
+                              onPressed: position > index + 1
+                                  ? () => moveUpcoming(position, position - 1)
+                                  : null,
+                              icon: const Icon(Icons.arrow_upward),
+                            ),
+                            IconButton(
+                              tooltip: 'Eine Position nach unten',
+                              onPressed: position < steps.length - 1
+                                  ? () => moveUpcoming(position, position + 1)
+                                  : null,
+                              icon: const Icon(Icons.arrow_downward),
+                            ),
+                          ],
+                        )
+                      : null,
                 );
               }),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 4, 16, 14),
-                child: Text(
-                  'Folgeaufträge starten niemals automatisch.',
-                  style: TextStyle(color: Color(0xff667085)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: addUpcoming,
+                      icon: const Icon(Icons.add),
+                      label: const Text('FOLGEAUFTRAG ANHÄNGEN'),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Folgeaufträge starten niemals automatisch.',
+                      style: TextStyle(color: Color(0xff667085)),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -1207,6 +1239,104 @@ class _TodayPageState extends State<TodayPage> {
       steps[position] = planned.copyWith(start: cursor, end: end);
       cursor = end;
     }
+  }
+
+  void _replanUpcoming() {
+    _replanFutureFrom(targetEnd ?? steps[index].end);
+  }
+
+  void moveUpcoming(int from, int to) {
+    if (from <= index || to <= index || from == to) return;
+    setState(() {
+      final moved = steps.removeAt(from);
+      steps.insert(to, moved);
+      _replanUpcoming();
+    });
+    widget.onSessionChanged(_snapshot());
+  }
+
+  Future<void> addUpcoming() async {
+    final item = await showModalBottomSheet<WorkItem>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => const WorkItemSheet(),
+    );
+    if (item == null || !mounted) return;
+    final previous = steps.last;
+    final start = previous.end;
+    final available = productiveMinutes(
+      start,
+      previous.capacityEnd,
+      previous.pauseStart,
+      previous.pauseEnd,
+    );
+    final capacityPieces = available / item.minutesPerPiece;
+    final exactPieces = capacityPieces < item.quantity
+        ? capacityPieces
+        : item.quantity.toDouble();
+    final lower = exactPieces.floor();
+    final upper = exactPieces.ceil() > item.quantity
+        ? item.quantity
+        : exactPieces.ceil();
+    final recommended = lower == upper || exactPieces - lower < 0.5
+        ? lower
+        : upper;
+    final wholePieces = switch (item.roundingChoice) {
+      RoundingChoice.down => lower,
+      RoundingChoice.up => upper,
+      RoundingChoice.automatic => recommended,
+    };
+    if (wholePieces <= 0) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Keine Schichtzeit mehr frei'),
+          content: const Text(
+            'Der Auftrag wurde nicht angehängt. Verlängere zuerst die Schichtplanung oder entferne eine zukünftige Arbeit.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    final end = addProductiveMinutes(
+      start,
+      wholePieces * item.minutesPerPiece,
+      previous.pauseStart,
+      previous.pauseEnd,
+    );
+    setState(() {
+      steps.add(
+        ScheduleStep(
+          item: item,
+          start: start,
+          end: end,
+          pauseStart: previous.pauseStart,
+          pauseEnd: previous.pauseEnd,
+          capacityEnd: previous.capacityEnd,
+          wholePieces: wholePieces,
+          recommendedPieces: recommended,
+          exactPieces: exactPieces,
+        ),
+      );
+      _replanUpcoming();
+    });
+    widget.onSessionChanged(_snapshot());
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Folgeauftrag angehängt. Mit den Pfeilen kannst du ihn verschieben.',
+        ),
+      ),
+    );
   }
 
   void snoozeAlarm() {

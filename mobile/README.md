@@ -32,6 +32,8 @@ Aktueller Umfang:
 - Schnellwahl für aktuelle Uhrzeit oder zulässige Planzeit
 - Folgeaufträge werden lückenlos ab der betrieblichen Rückmeldezeit neu geplant
 - fünf Minuten Snooze bei erreichtem Soll-Ende; die Arbeit läuft dabei weiter
+- Folgeaufträge im laufenden Tagesplan sicher umordnen
+- neue Folgeaufträge während der Schicht anhängen und zeitlich neu berechnen
 
 Als nächste getrennte Bereiche sind die Historie sowie Einstellungen für
 System-, Hell- und Dunkelmodus vorgesehen.

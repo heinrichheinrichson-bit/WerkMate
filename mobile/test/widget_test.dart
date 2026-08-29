@@ -234,13 +234,14 @@ void main() {
       startedAt: DateTime(2099, 8, 28, 5, 45),
       targetEnd: DateTime(2099, 8, 28, 6, 5),
     );
+    WorkSessionSnapshot? changedSession;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: TodayPage(
             steps: steps,
             restored: restored,
-            onSessionChanged: (_) {},
+            onSessionChanged: (value) => changedSession = value,
             onReport: (_) async {},
           ),
         ),
@@ -251,6 +252,12 @@ void main() {
     for (final die in ['Ges. 1111', 'Ges. 2222', 'Ges. 3333']) {
       expect(find.text(die), findsWidgets);
     }
+    final moveUp = find.byTooltip('Eine Position nach oben').last;
+    await tester.ensureVisible(moveUp);
+    await tester.tap(moveUp);
+    await tester.pump();
+    expect(changedSession?.steps[1].item.dieNumber, '3333');
+    expect(changedSession?.steps[2].item.dieNumber, '2222');
     await tester.ensureVisible(find.text('ARBEIT RÜCKMELDEN'));
     await tester.tap(find.text('ARBEIT RÜCKMELDEN'));
     await tester.pumpAndSettle();
