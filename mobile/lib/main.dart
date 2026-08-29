@@ -86,6 +86,11 @@ ThemeData _appTheme(Brightness brightness) {
   );
 }
 
+double _bottomSheetInset(BuildContext context) {
+  final media = MediaQuery.of(context);
+  return 20 + media.viewPadding.bottom + media.viewInsets.bottom;
+}
+
 class WerkMateHome extends StatefulWidget {
   const WerkMateHome({
     super.key,
@@ -158,7 +163,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.13.3',
+              'Mobile 0.13.4',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -673,7 +678,17 @@ class _PlanPageState extends State<PlanPage> {
                   leading: const Icon(Icons.schedule),
                   title: const Text('Beginn der ersten Arbeit'),
                   subtitle: Text(_minutes(widget.plan.startMinutes)),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton.icon(
+                        onPressed: _setStartNow,
+                        icon: const Icon(Icons.bolt),
+                        label: const Text('Jetzt'),
+                      ),
+                      const Icon(Icons.chevron_right),
+                    ],
+                  ),
                   onTap: _pickStart,
                 ),
                 const Divider(height: 20),
@@ -968,6 +983,11 @@ class _PlanPageState extends State<PlanPage> {
     }
   }
 
+  void _setStartNow() {
+    final now = DateTime.now();
+    _change(widget.plan.copyWith(startMinutes: now.hour * 60 + now.minute));
+  }
+
   Future<void> _editItem([int? index]) async {
     final current = index == null ? null : widget.plan.items[index];
     final result = await showModalBottomSheet<WorkItem>(
@@ -1010,12 +1030,7 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.fromLTRB(
-      20,
-      18,
-      20,
-      20 + MediaQuery.viewInsetsOf(context).bottom,
-    ),
+    padding: EdgeInsets.fromLTRB(20, 18, 20, _bottomSheetInset(context)),
     child: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1812,12 +1827,7 @@ class _ReportSheetState extends State<ReportSheet> {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.fromLTRB(
-      20,
-      16,
-      20,
-      20 + MediaQuery.viewInsetsOf(context).bottom,
-    ),
+    padding: EdgeInsets.fromLTRB(20, 16, 20, _bottomSheetInset(context)),
     child: SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -2257,12 +2267,7 @@ class _CreditUseSheetState extends State<CreditUseSheet> {
     final lower = exactPieces.floor();
     final upper = exactPieces.ceil();
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        18,
-        20,
-        20 + MediaQuery.viewInsetsOf(context).bottom,
-      ),
+      padding: EdgeInsets.fromLTRB(20, 18, 20, _bottomSheetInset(context)),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
