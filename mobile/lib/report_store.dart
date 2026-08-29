@@ -37,6 +37,7 @@ class WorkReport {
     required this.startedAt,
     required this.endedAt,
     required this.plannedEnd,
+    this.plannedStart,
     required this.completedOrder,
     required this.note,
   });
@@ -45,15 +46,17 @@ class WorkReport {
   final WorkItem item;
   final int plannedPieces, actualPieces, reportedPieces;
   final DateTime startedAt, endedAt, plannedEnd;
+  final DateTime? plannedStart;
   final bool completedOrder;
   final String note;
 
   double get actualMinutes => endedAt.difference(startedAt).inSeconds / 60;
-  double get plannedMinutes => plannedEnd.difference(startedAt).inSeconds / 60;
+  double get plannedMinutes =>
+      plannedEnd.difference(plannedStart ?? startedAt).inSeconds / 60;
   double get timeDeviationMinutes => actualMinutes - plannedMinutes;
   int get pieceDeviation => actualPieces - plannedPieces;
 
-  Map<String, Object> toJson() => {
+  Map<String, Object?> toJson() => {
     'id': id,
     'item': item.toJson(),
     'plannedPieces': plannedPieces,
@@ -62,6 +65,7 @@ class WorkReport {
     'startedAt': startedAt.toIso8601String(),
     'endedAt': endedAt.toIso8601String(),
     'plannedEnd': plannedEnd.toIso8601String(),
+    'plannedStart': plannedStart?.toIso8601String(),
     'completedOrder': completedOrder,
     'note': note,
   };
@@ -75,6 +79,9 @@ class WorkReport {
     startedAt: DateTime.parse(json['startedAt'] as String),
     endedAt: DateTime.parse(json['endedAt'] as String),
     plannedEnd: DateTime.parse(json['plannedEnd'] as String),
+    plannedStart: json['plannedStart'] == null
+        ? null
+        : DateTime.parse(json['plannedStart'] as String),
     completedOrder: json['completedOrder'] as bool,
     note: json['note'] as String? ?? '',
   );
@@ -102,6 +109,16 @@ class ReportStore {
   Future<void> append(WorkReport report) async {
     final reports = await load()
       ..add(report);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _key,
+      jsonEncode(reports.map((value) => value.toJson()).toList()),
+    );
+  }
+
+  Future<void> delete(String id) async {
+    final reports = await load()
+      ..removeWhere((report) => report.id == id);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _key,

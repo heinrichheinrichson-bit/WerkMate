@@ -5,58 +5,95 @@ import 'package:flutter/services.dart';
 
 import 'domain.dart';
 import 'alarm_service.dart';
+import 'app_settings_store.dart';
 import 'plan_store.dart';
 import 'report_store.dart';
 import 'work_session_store.dart';
 
 void main() => runApp(const WerkMateApp());
 
-class WerkMateApp extends StatelessWidget {
+class WerkMateApp extends StatefulWidget {
   const WerkMateApp({super.key});
+
+  @override
+  State<WerkMateApp> createState() => _WerkMateAppState();
+}
+
+class _WerkMateAppState extends State<WerkMateApp> {
+  final settingsStore = AppSettingsStore();
+  ThemeMode themeMode = ThemeMode.system;
+
+  @override
+  void initState() {
+    super.initState();
+    settingsStore.loadThemeMode().then((value) {
+      if (mounted) setState(() => themeMode = value);
+    });
+  }
+
+  Future<void> changeTheme(ThemeMode value) async {
+    await settingsStore.saveThemeMode(value);
+    if (mounted) setState(() => themeMode = value);
+  }
 
   @override
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
     title: 'WerkMate',
-    theme: ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xff2563eb),
-        brightness: Brightness.light,
-      ),
-      scaffoldBackgroundColor: const Color(0xfff6f7fb),
-      cardTheme: const CardThemeData(
-        elevation: 0,
-        margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(20)),
-          side: BorderSide(color: Color(0xffe4e7ec)),
-        ),
-      ),
-      inputDecorationTheme: const InputDecorationTheme(
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(14)),
-          borderSide: BorderSide(color: Color(0xffd0d5dd)),
-        ),
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          minimumSize: const Size(0, 54),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+    themeMode: themeMode,
+    theme: _appTheme(Brightness.light),
+    darkTheme: _appTheme(Brightness.dark),
+    home: WerkMateHome(themeMode: themeMode, onThemeChanged: changeTheme),
+  );
+}
+
+ThemeData _appTheme(Brightness brightness) {
+  final dark = brightness == Brightness.dark;
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: const Color(0xff2563eb),
+      brightness: brightness,
+    ),
+    scaffoldBackgroundColor: dark
+        ? const Color(0xff101318)
+        : const Color(0xfff6f7fb),
+    cardTheme: CardThemeData(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.all(Radius.circular(20)),
+        side: BorderSide(
+          color: dark ? const Color(0xff344054) : const Color(0xffe4e7ec),
         ),
       ),
     ),
-    home: const WerkMateHome(),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: dark ? const Color(0xff1d2939) : Colors.white,
+      border: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(14)),
+        borderSide: BorderSide(color: Color(0xffd0d5dd)),
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(0, 54),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+      ),
+    ),
   );
 }
 
 class WerkMateHome extends StatefulWidget {
-  const WerkMateHome({super.key});
+  const WerkMateHome({
+    super.key,
+    required this.themeMode,
+    required this.onThemeChanged,
+  });
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeChanged;
   @override
   State<WerkMateHome> createState() => _WerkMateHomeState();
 }
@@ -67,6 +104,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
   final reportStore = ReportStore();
   int page = 1;
   List<ShiftPlan> saved = [];
+  List<WorkReport> reports = [];
   List<ScheduleStep> activeSteps = [];
   WorkSessionSnapshot? restoredSession;
   int runKey = 0;
@@ -78,6 +116,9 @@ class _WerkMateHomeState extends State<WerkMateHome> {
     draft = _emptyPlan();
     store.load().then((value) {
       if (mounted) setState(() => saved = value);
+    });
+    reportStore.load().then((value) {
+      if (mounted) setState(() => reports = value);
     });
     sessionStore.load().then((value) {
       if (mounted && value != null && value.index < value.steps.length) {
@@ -117,7 +158,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.10',
+              'Mobile 0.12',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -133,7 +174,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
             steps: activeSteps,
             restored: restoredSession,
             onSessionChanged: persistSession,
-            onReport: reportStore.append,
+            onReport: saveReport,
           ),
           PlanPage(
             plan: draft,
@@ -151,7 +192,11 @@ class _WerkMateHomeState extends State<WerkMateHome> {
             onDuplicate: duplicatePlan,
             onDelete: deletePlan,
           ),
-          const MorePage(),
+          MorePage(
+            reportCount: reports.length,
+            onHistory: openHistory,
+            onSettings: openSettings,
+          ),
         ],
       ),
     ),
@@ -272,6 +317,33 @@ class _WerkMateHomeState extends State<WerkMateHome> {
         if (snapshot == null) activeSteps = [];
       });
     }
+  }
+
+  Future<void> saveReport(WorkReport report) async {
+    await reportStore.append(report);
+    final value = await reportStore.load();
+    if (mounted) setState(() => reports = value);
+  }
+
+  Future<void> openHistory() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (context) => const HistoryPage()),
+    );
+    final value = await reportStore.load();
+    if (mounted) setState(() => reports = value);
+  }
+
+  Future<void> openSettings() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SettingsPage(
+          themeMode: widget.themeMode,
+          onThemeChanged: widget.onThemeChanged,
+        ),
+      ),
+    );
   }
 
   Future<void> duplicatePlan(ShiftPlan plan) async {
@@ -1205,6 +1277,7 @@ class _TodayPageState extends State<TodayPage> {
       startedAt: startedAt!,
       endedAt: draft.endedAt,
       plannedEnd: targetEnd!,
+      plannedStart: step.start,
       completedOrder: draft.completedOrder,
       note: draft.note,
     );
@@ -1732,33 +1805,50 @@ class PlansPage extends StatelessWidget {
 }
 
 class MorePage extends StatelessWidget {
-  const MorePage({super.key});
+  const MorePage({
+    super.key,
+    required this.reportCount,
+    required this.onHistory,
+    required this.onSettings,
+  });
+  final int reportCount;
+  final VoidCallback onHistory, onSettings;
+
   @override
   Widget build(BuildContext context) => ResponsivePage(
-    children: const [
-      PageTitle(
+    children: [
+      const PageTitle(
         title: 'Mehr',
-        subtitle: 'Weitere Bereiche folgen schrittweise',
+        subtitle: 'Daten und persönliche Einstellungen',
       ),
-      SizedBox(height: 16),
+      const SizedBox(height: 16),
       Card(
         child: Column(
           children: [
             ListTile(
+              leading: const Icon(Icons.history),
+              title: const Text('Meine Rückmeldungen'),
+              subtitle: Text(
+                reportCount == 1
+                    ? '1 Rückmeldung lokal gespeichert'
+                    : '$reportCount Rückmeldungen lokal gespeichert',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: onHistory,
+            ),
+            const Divider(height: 1),
+            const ListTile(
               leading: Icon(Icons.precision_manufacturing_outlined),
               title: Text('Gesenkkatalog'),
-              subtitle: Text('Als nächster Ausbauschritt'),
+              subtitle: Text('Folgt als eigener Bereich'),
             ),
-            Divider(height: 1),
+            const Divider(height: 1),
             ListTile(
-              leading: Icon(Icons.history),
-              title: Text('Historie'),
-              subtitle: Text('Nach der Stückrückmeldung'),
-            ),
-            Divider(height: 1),
-            ListTile(
-              leading: Icon(Icons.settings_outlined),
-              title: Text('Einstellungen'),
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('Einstellungen'),
+              subtitle: const Text('Darstellung und App-Verhalten'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: onSettings,
             ),
           ],
         ),
@@ -1766,6 +1856,296 @@ class MorePage extends StatelessWidget {
     ],
   );
 }
+
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({
+    super.key,
+    required this.themeMode,
+    required this.onThemeChanged,
+  });
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeChanged;
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  late ThemeMode current;
+
+  @override
+  void initState() {
+    super.initState();
+    current = widget.themeMode;
+  }
+
+  void select(ThemeMode value) {
+    setState(() => current = value);
+    widget.onThemeChanged(value);
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Einstellungen')),
+    body: ResponsivePage(
+      children: [
+        const PageTitle(
+          title: 'Darstellung',
+          subtitle: 'WerkMate an dein Gerät anpassen',
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SegmentedButton<ThemeMode>(
+                  segments: const [
+                    ButtonSegment(
+                      value: ThemeMode.system,
+                      icon: Icon(Icons.brightness_auto_outlined),
+                      label: Text('System'),
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.light,
+                      icon: Icon(Icons.light_mode_outlined),
+                      label: Text('Hell'),
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.dark,
+                      icon: Icon(Icons.dark_mode_outlined),
+                      label: Text('Dunkel'),
+                    ),
+                  ],
+                  selected: {current},
+                  onSelectionChanged: (value) => select(value.single),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  current == ThemeMode.system
+                      ? 'WerkMate folgt automatisch deinem Smartphone.'
+                      : current == ThemeMode.dark
+                      ? 'Dunkle Darstellung ist dauerhaft aktiv.'
+                      : 'Helle Darstellung ist dauerhaft aktiv.',
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Weitere Einstellungen kommen nur hinzu, wenn sie den Arbeitsablauf wirklich vereinfachen.',
+          style: TextStyle(color: Color(0xff667085)),
+        ),
+      ],
+    ),
+  );
+}
+
+class HistoryPage extends StatefulWidget {
+  const HistoryPage({super.key});
+
+  @override
+  State<HistoryPage> createState() => _HistoryPageState();
+}
+
+class _HistoryPageState extends State<HistoryPage> {
+  final store = ReportStore();
+  List<WorkReport>? reports;
+
+  @override
+  void initState() {
+    super.initState();
+    reload();
+  }
+
+  Future<void> reload() async {
+    final value = await store.load();
+    value.sort((a, b) => b.endedAt.compareTo(a.endedAt));
+    if (mounted) setState(() => reports = value);
+  }
+
+  Future<void> deleteReport(WorkReport report) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rückmeldung löschen?'),
+        content: Text(
+          '${report.item.name}\n${_date(report.endedAt)} · ${hhmm(report.startedAt)}–${hhmm(report.endedAt)}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('ABBRECHEN'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('LÖSCHEN'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await store.delete(report.id);
+    await reload();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Meine Rückmeldungen')),
+    body: reports == null
+        ? const Center(child: CircularProgressIndicator())
+        : reports!.isEmpty
+        ? const Center(
+            child: EmptyCard(
+              icon: Icons.history,
+              text: 'Noch keine Arbeiten rückgemeldet.',
+            ),
+          )
+        : ResponsivePage(
+            children: [
+              PageTitle(
+                title: 'Historie',
+                subtitle: '${reports!.length} lokal gespeicherte Rückmeldungen',
+              ),
+              const SizedBox(height: 16),
+              ...reports!.map(
+                (report) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: ReportHistoryCard(
+                    report: report,
+                    onDelete: () => deleteReport(report),
+                  ),
+                ),
+              ),
+            ],
+          ),
+  );
+}
+
+class ReportHistoryCard extends StatelessWidget {
+  const ReportHistoryCard({
+    super.key,
+    required this.report,
+    required this.onDelete,
+  });
+  final WorkReport report;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final time = report.timeDeviationMinutes;
+    final pieces = report.pieceDeviation;
+    final timePercent = report.plannedMinutes == 0
+        ? 0.0
+        : time / report.plannedMinutes * 100;
+    return Card(
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.fromLTRB(18, 8, 10, 8),
+        childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
+        title: Text(
+          report.item.name,
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          '${_date(report.endedAt)} · ${hhmm(report.startedAt)}–${hhmm(report.endedAt)}\n${report.actualPieces} bearbeitet · ${report.reportedPieces} gemeldet',
+        ),
+        children: [
+          const Divider(),
+          _DeviationRow(
+            icon: Icons.schedule,
+            label: time > 0
+                ? '${_number(time.abs())} Min. Verzug (${_signedPercent(timePercent)})'
+                : time < 0
+                ? '${_number(time.abs())} Min. früher (${_signedPercent(timePercent)})'
+                : 'Zeit genau eingehalten',
+            color: time > 0
+                ? const Color(0xffb42318)
+                : time < 0
+                ? const Color(0xff067647)
+                : const Color(0xff667085),
+          ),
+          _DeviationRow(
+            icon: Icons.inventory_2_outlined,
+            label: pieces > 0
+                ? '+$pieces Stück mehr als geplant'
+                : pieces < 0
+                ? '${pieces.abs()} Stück weniger als geplant'
+                : 'Stückzahl genau eingehalten',
+            color: pieces > 0
+                ? const Color(0xff067647)
+                : pieces < 0
+                ? const Color(0xffb42318)
+                : const Color(0xff667085),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              report.completedOrder
+                  ? 'Gesamtauftrag vollständig beendet'
+                  : 'Teilrückmeldung',
+            ),
+          ),
+          if (report.note.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Notiz: ${report.note}'),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: onDelete,
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('LÖSCHEN'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeviationRow extends StatelessWidget {
+  const _DeviationRow({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      children: [
+        Icon(icon, color: color),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(color: color, fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+String _date(DateTime value) =>
+    '${value.day.toString().padLeft(2, '0')}.${value.month.toString().padLeft(2, '0')}.${value.year}';
+
+String _signedPercent(double value) =>
+    '${value >= 0 ? '+' : '−'}${value.abs().toStringAsFixed(1).replaceAll('.', ',')} %';
 
 class ScheduleCard extends StatelessWidget {
   const ScheduleCard({

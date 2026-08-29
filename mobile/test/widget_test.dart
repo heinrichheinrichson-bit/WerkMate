@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:werkmate_mobile/domain.dart';
+import 'package:werkmate_mobile/app_settings_store.dart';
 import 'package:werkmate_mobile/main.dart';
 import 'package:werkmate_mobile/report_store.dart';
 import 'package:werkmate_mobile/work_session_store.dart';
@@ -38,6 +39,50 @@ void main() {
     expect(saved.single.pieceDeviation, 1);
     expect(saved.single.timeDeviationMinutes, 10);
     expect(saved.single.note, 'Testnotiz');
+    await store.delete('report-1');
+    expect(await store.load(), isEmpty);
+  });
+
+  test('selected appearance is stored locally', () async {
+    final store = AppSettingsStore();
+    expect(await store.loadThemeMode(), ThemeMode.system);
+    await store.saveThemeMode(ThemeMode.dark);
+    expect(await store.loadThemeMode(), ThemeMode.dark);
+  });
+
+  testWidgets('history card shows colored time and piece deviations', (
+    tester,
+  ) async {
+    final report = WorkReport(
+      id: 'history-1',
+      item: const WorkItem(
+        id: 'work-history',
+        dieNumber: '8720',
+        quantity: 12,
+        minutesPerPiece: 20,
+      ),
+      plannedPieces: 5,
+      actualPieces: 6,
+      reportedPieces: 5,
+      plannedStart: DateTime(2026, 8, 29, 10),
+      startedAt: DateTime(2026, 8, 29, 10),
+      plannedEnd: DateTime(2026, 8, 29, 11, 40),
+      endedAt: DateTime(2026, 8, 29, 11, 50),
+      completedOrder: false,
+      note: 'Werkzeug geprüft',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ReportHistoryCard(report: report, onDelete: () {}),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Ges. 8720'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('10 Min. Verzug'), findsOneWidget);
+    expect(find.text('+1 Stück mehr als geplant'), findsOneWidget);
+    expect(find.text('Notiz: Werkzeug geprüft'), findsOneWidget);
   });
 
   test('report time is never future and at most 59 minutes old', () {

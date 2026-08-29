@@ -34,6 +34,10 @@ Aktueller Umfang:
 - fünf Minuten Snooze bei erreichtem Soll-Ende; die Arbeit läuft dabei weiter
 - Folgeaufträge im laufenden Tagesplan sicher umordnen
 - neue Folgeaufträge während der Schicht anhängen und zeitlich neu berechnen
+- mobile Rückmeldungshistorie mit Zeit- und Stückabweichungen
+- Verzug und Minderstück rot, frühere Fertigstellung und Mehrstück grün
+- einzelne Rückmeldungen nach Sicherheitsabfrage löschen
+- lokal gespeicherter System-, Hell- oder Dunkelmodus
 
 Als nächste getrennte Bereiche sind die Historie sowie Einstellungen für
 System-, Hell- und Dunkelmodus vorgesehen.
