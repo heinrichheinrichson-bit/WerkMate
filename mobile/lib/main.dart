@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'domain.dart';
 import 'alarm_service.dart';
 import 'plan_store.dart';
+import 'report_store.dart';
 import 'work_session_store.dart';
 
 void main() => runApp(const WerkMateApp());
@@ -63,6 +64,7 @@ class WerkMateHome extends StatefulWidget {
 class _WerkMateHomeState extends State<WerkMateHome> {
   final store = PlanStore();
   final sessionStore = WorkSessionStore();
+  final reportStore = ReportStore();
   int page = 1;
   List<ShiftPlan> saved = [];
   List<ScheduleStep> activeSteps = [];
@@ -115,7 +117,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.7',
+              'Mobile 0.8',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -131,6 +133,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
             steps: activeSteps,
             restored: restoredSession,
             onSessionChanged: persistSession,
+            onReport: reportStore.append,
           ),
           PlanPage(
             plan: draft,
@@ -873,10 +876,12 @@ class TodayPage extends StatefulWidget {
     required this.steps,
     required this.restored,
     required this.onSessionChanged,
+    required this.onReport,
   });
   final List<ScheduleStep> steps;
   final WorkSessionSnapshot? restored;
   final ValueChanged<WorkSessionSnapshot?> onSessionChanged;
+  final Future<void> Function(WorkReport) onReport;
   @override
   State<TodayPage> createState() => _TodayPageState();
 }
@@ -1081,9 +1086,9 @@ class _TodayPageState extends State<TodayPage> {
           )
         else ...[
           FilledButton.icon(
-            onPressed: confirmFinish,
+            onPressed: reportAndFinish,
             icon: const Icon(Icons.check),
-            label: const Text('ARBEIT FERTIG'),
+            label: const Text('ARBEIT RÜCKMELDEN'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -1139,28 +1144,35 @@ class _TodayPageState extends State<TodayPage> {
     }
   }
 
-  Future<void> confirmFinish() async {
-    final confirmed = await showDialog<bool>(
+  Future<void> reportAndFinish() async {
+    final step = widget.steps[index];
+    final draft = await showModalBottomSheet<_ReportDraft>(
       context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Aktuelle Arbeit beenden?'),
-        content: Text(
-          '${widget.steps[index].item.name} wird als erledigt markiert. Der nächste Auftrag startet danach nicht automatisch.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('WEITERLAUFEN LASSEN'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('JA, ARBEIT BEENDEN'),
-          ),
-        ],
+      isScrollControlled: true,
+      useSafeArea: true,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (context) => ReportSheet(
+        step: step,
+        startedAt: startedAt!,
+        plannedEnd: targetEnd!,
       ),
     );
-    if (confirmed == true) finish();
+    if (draft == null || !mounted) return;
+    final report = WorkReport(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      item: step.item,
+      plannedPieces: step.wholePieces,
+      actualPieces: draft.actualPieces,
+      reportedPieces: draft.reportedPieces,
+      startedAt: startedAt!,
+      endedAt: draft.endedAt,
+      plannedEnd: targetEnd!,
+      completedOrder: draft.completedOrder,
+      note: draft.note,
+    );
+    await widget.onReport(report);
+    if (mounted) finish();
   }
 
   void finish() {
@@ -1237,6 +1249,218 @@ class _TodayPageState extends State<TodayPage> {
     index: index,
     startedAt: startedAt,
     targetEnd: targetEnd,
+  );
+}
+
+class _ReportDraft {
+  const _ReportDraft({
+    required this.actualPieces,
+    required this.reportedPieces,
+    required this.endedAt,
+    required this.completedOrder,
+    required this.note,
+  });
+
+  final int actualPieces, reportedPieces;
+  final DateTime endedAt;
+  final bool completedOrder;
+  final String note;
+}
+
+class ReportSheet extends StatefulWidget {
+  const ReportSheet({
+    super.key,
+    required this.step,
+    required this.startedAt,
+    required this.plannedEnd,
+  });
+
+  final ScheduleStep step;
+  final DateTime startedAt, plannedEnd;
+
+  @override
+  State<ReportSheet> createState() => _ReportSheetState();
+}
+
+class _ReportSheetState extends State<ReportSheet> {
+  late final TextEditingController actualController;
+  late final TextEditingController reportedController;
+  final noteController = TextEditingController();
+  late DateTime endedAt;
+  bool completedOrder = false;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    actualController = TextEditingController(
+      text: '${widget.step.wholePieces}',
+    );
+    reportedController = TextEditingController(
+      text: '${widget.step.wholePieces}',
+    );
+    endedAt = DateTime.now();
+  }
+
+  @override
+  void dispose() {
+    actualController.dispose();
+    reportedController.dispose();
+    noteController.dispose();
+    super.dispose();
+  }
+
+  Future<void> pickEndTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(endedAt),
+    );
+    if (picked == null) return;
+    var candidate = DateTime(
+      widget.startedAt.year,
+      widget.startedAt.month,
+      widget.startedAt.day,
+      picked.hour,
+      picked.minute,
+    );
+    if (candidate.isBefore(widget.startedAt) &&
+        widget.startedAt.hour >= 12 &&
+        picked.hour < 12) {
+      candidate = candidate.add(const Duration(days: 1));
+    }
+    setState(() {
+      endedAt = candidate;
+      error = null;
+    });
+  }
+
+  void save() {
+    final actual = int.tryParse(actualController.text.trim());
+    final reported = int.tryParse(reportedController.text.trim());
+    if (actual == null || reported == null || actual < 0 || reported < 0) {
+      setState(() => error = 'Bitte gültige, ganze Stückzahlen eingeben.');
+      return;
+    }
+    if (endedAt.isBefore(widget.startedAt)) {
+      setState(
+        () => error = 'Die Abmeldezeit darf nicht vor der Startzeit liegen.',
+      );
+      return;
+    }
+    Navigator.pop(
+      context,
+      _ReportDraft(
+        actualPieces: actual,
+        reportedPieces: reported,
+        endedAt: endedAt,
+        completedOrder: completedOrder,
+        note: noteController.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.fromLTRB(
+      20,
+      16,
+      20,
+      20 + MediaQuery.viewInsetsOf(context).bottom,
+    ),
+    child: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Arbeit rückmelden',
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          Text(widget.step.item.name),
+          const SizedBox(height: 14),
+          Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                'Geplant: ${widget.step.wholePieces} Stück · ${hhmm(widget.startedAt)}–${hhmm(widget.plannedEnd)}',
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: actualController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Tatsächlich bearbeitet',
+                    suffixText: 'Stk',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: reportedController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Betrieblich rückgemeldet',
+                    suffixText: 'Stk',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Abmeldezeit'),
+            subtitle: Text(hhmm(endedAt)),
+            trailing: const Icon(Icons.edit_outlined),
+            onTap: pickEndTime,
+          ),
+          TextField(
+            controller: noteController,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              labelText: 'Notiz (optional)',
+              hintText: 'Besonderheiten zu dieser Arbeit',
+            ),
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: completedOrder,
+            onChanged: (value) => setState(() => completedOrder = value),
+            title: const Text('Gesamtauftrag vollständig beendet'),
+            subtitle: Text(
+              completedOrder
+                  ? 'Der gesamte Auftrag wird als beendet vermerkt.'
+                  : 'Teilrückmeldung – offene Stück bleiben bestehen.',
+            ),
+          ),
+          if (error != null) ...[
+            const SizedBox(height: 4),
+            Text(error!, style: const TextStyle(color: Colors.red)),
+          ],
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: save,
+            child: const Text('SPEICHERN UND ARBEIT BEENDEN'),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('ABBRECHEN – ARBEIT WEITERLAUFEN LASSEN'),
+          ),
+        ],
+      ),
+    ),
   );
 }
 

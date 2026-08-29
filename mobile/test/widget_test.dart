@@ -3,9 +3,43 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:werkmate_mobile/domain.dart';
 import 'package:werkmate_mobile/main.dart';
+import 'package:werkmate_mobile/report_store.dart';
 import 'package:werkmate_mobile/work_session_store.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test('work reports are stored locally with deviations', () async {
+    final store = ReportStore();
+    final report = WorkReport(
+      id: 'report-1',
+      item: const WorkItem(
+        id: 'work-1',
+        orderNumber: '40230747',
+        dieNumber: '8720',
+        operation: 'FP',
+        quantity: 12,
+        minutesPerPiece: 20,
+      ),
+      plannedPieces: 5,
+      actualPieces: 6,
+      reportedPieces: 5,
+      startedAt: DateTime(2026, 8, 29, 5, 45),
+      endedAt: DateTime(2026, 8, 29, 7, 35),
+      plannedEnd: DateTime(2026, 8, 29, 7, 25),
+      completedOrder: false,
+      note: 'Testnotiz',
+    );
+    await store.append(report);
+
+    final saved = await store.load();
+    expect(saved, hasLength(1));
+    expect(saved.single.item.orderNumber, '40230747');
+    expect(saved.single.pieceDeviation, 1);
+    expect(saved.single.timeDeviationMinutes, 10);
+    expect(saved.single.note, 'Testnotiz');
+  });
+
   test('work identity separates order, die and operation', () {
     const item = WorkItem(
       id: '1',
@@ -170,6 +204,7 @@ void main() {
             steps: steps,
             restored: restored,
             onSessionChanged: (_) {},
+            onReport: (_) async {},
           ),
         ),
       ),
@@ -179,20 +214,18 @@ void main() {
     for (final die in ['Ges. 1111', 'Ges. 2222', 'Ges. 3333']) {
       expect(find.text(die), findsWidgets);
     }
-    await tester.ensureVisible(find.text('ARBEIT FERTIG'));
-    await tester.tap(find.text('ARBEIT FERTIG'));
+    await tester.ensureVisible(find.text('ARBEIT RÜCKMELDEN'));
+    await tester.tap(find.text('ARBEIT RÜCKMELDEN'));
     await tester.pumpAndSettle();
-    expect(find.text('Aktuelle Arbeit beenden?'), findsOneWidget);
-    expect(find.text('WEITERLAUFEN LASSEN'), findsOneWidget);
-    await tester.tap(find.text('WEITERLAUFEN LASSEN'));
+    expect(find.text('Arbeit rückmelden'), findsOneWidget);
+    expect(find.text('SPEICHERN UND ARBEIT BEENDEN'), findsOneWidget);
+    await tester.tap(find.text('ABBRECHEN – ARBEIT WEITERLAUFEN LASSEN'));
     await tester.pumpAndSettle();
-    expect(find.text('Aktuelle Arbeit beenden?'), findsNothing);
+    expect(find.text('Arbeit rückmelden'), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
     await tester.binding.setSurfaceSize(null);
   });
-
-  setUp(() => SharedPreferences.setMockInitialValues({}));
 
   testWidgets('starts with smartphone planning navigation', (tester) async {
     await tester.pumpWidget(const WerkMateApp());

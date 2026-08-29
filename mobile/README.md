@@ -25,6 +25,12 @@ Aktueller Umfang:
 - vollständiger Tagesablauf mit Status und voraussichtlichen Folgezeiten unter `Heute`
 - Sicherheitsabfragen vor Beenden, Zeitänderung oder Ersetzen eines aktiven Tages
 - Planentwürfe bleiben vollständig vom laufenden Arbeitstag getrennt
+- geschützte Rückmeldung mit tatsächlich bearbeiteten und betrieblich gemeldeten Stück
+- frei korrigierbare Abmeldezeit, Teil-/Gesamtabschluss und optionale Notiz
+- Rückmeldungen werden lokal für die spätere Historie gespeichert
+
+Als nächste getrennte Bereiche sind die Historie sowie Einstellungen für
+System-, Hell- und Dunkelmodus vorgesehen.
 
 ## Prüfen und starten
 
