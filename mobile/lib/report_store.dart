@@ -4,6 +4,29 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'domain.dart';
 
+DateTime minutePrecision(DateTime value) =>
+    DateTime(value.year, value.month, value.day, value.hour, value.minute);
+
+String? validateReportTime({
+  required DateTime now,
+  required DateTime startedAt,
+  required DateTime reportedAt,
+}) {
+  final current = minutePrecision(now);
+  final start = minutePrecision(startedAt);
+  final report = minutePrecision(reportedAt);
+  if (report.isAfter(current)) {
+    return 'Rückmeldungen in der Zukunft sind nicht erlaubt.';
+  }
+  if (report.isBefore(current.subtract(const Duration(minutes: 59)))) {
+    return 'Die Rückmeldezeit darf höchstens 59 Minuten zurückliegen.';
+  }
+  if (report.isBefore(start)) {
+    return 'Die Abmeldezeit darf nicht vor der Startzeit liegen.';
+  }
+  return null;
+}
+
 class WorkReport {
   const WorkReport({
     required this.id,

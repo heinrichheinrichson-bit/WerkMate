@@ -40,6 +40,43 @@ void main() {
     expect(saved.single.note, 'Testnotiz');
   });
 
+  test('report time is never future and at most 59 minutes old', () {
+    final now = DateTime(2026, 8, 29, 12);
+    final start = DateTime(2026, 8, 29, 10);
+    expect(
+      validateReportTime(
+        now: now,
+        startedAt: start,
+        reportedAt: DateTime(2026, 8, 29, 12, 1),
+      ),
+      contains('Zukunft'),
+    );
+    expect(
+      validateReportTime(
+        now: now,
+        startedAt: start,
+        reportedAt: DateTime(2026, 8, 29, 11),
+      ),
+      contains('59 Minuten'),
+    );
+    expect(
+      validateReportTime(
+        now: now,
+        startedAt: start,
+        reportedAt: DateTime(2026, 8, 29, 11, 1),
+      ),
+      isNull,
+    );
+    expect(
+      validateReportTime(
+        now: now,
+        startedAt: DateTime(2026, 8, 29, 11, 30),
+        reportedAt: DateTime(2026, 8, 29, 11, 29),
+      ),
+      contains('Startzeit'),
+    );
+  });
+
   test('work identity separates order, die and operation', () {
     const item = WorkItem(
       id: '1',

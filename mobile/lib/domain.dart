@@ -140,6 +140,18 @@ class ScheduleStep {
   bool get hasRoundingChoice =>
       exactPieces < item.quantity && lowerPieces != upperPieces;
 
+  ScheduleStep copyWith({DateTime? start, DateTime? end}) => ScheduleStep(
+    item: item,
+    start: start ?? this.start,
+    end: end ?? this.end,
+    pauseStart: pauseStart,
+    pauseEnd: pauseEnd,
+    capacityEnd: capacityEnd,
+    wholePieces: wholePieces,
+    recommendedPieces: recommendedPieces,
+    exactPieces: exactPieces,
+  );
+
   Map<String, Object> toJson() => {
     'item': item.toJson(),
     'start': start.toIso8601String(),

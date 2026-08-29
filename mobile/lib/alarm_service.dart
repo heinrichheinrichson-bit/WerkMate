@@ -46,7 +46,11 @@ class AlarmService {
   Future<void> schedule(DateTime target, String workName) async {
     await initialize();
     await cancel();
-    final scheduled = tz.TZDateTime.from(target, tz.local);
+    final current = DateTime.now();
+    final safeTarget = target.isAfter(current)
+        ? target
+        : current.add(const Duration(seconds: 1));
+    final scheduled = tz.TZDateTime.from(safeTarget, tz.local);
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
         'work_target_alarm_v3',

@@ -117,7 +117,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.8',
+              'Mobile 0.9',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -889,14 +889,17 @@ class TodayPage extends StatefulWidget {
 class _TodayPageState extends State<TodayPage> {
   int index = 0;
   DateTime? startedAt, targetEnd;
+  DateTime? snoozeUntil;
   Timer? timer;
   bool alarmed = false;
   DateTime now = DateTime.now();
+  late List<ScheduleStep> steps;
 
   @override
   void initState() {
     super.initState();
     final restored = widget.restored;
+    steps = List.of(restored?.steps ?? widget.steps);
     if (restored != null && restored.steps.isNotEmpty) {
       index = restored.index;
       startedAt = restored.startedAt;
@@ -915,8 +918,8 @@ class _TodayPageState extends State<TodayPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.steps.isEmpty) return const EmptyToday();
-    if (index >= widget.steps.length) {
+    if (steps.isEmpty) return const EmptyToday();
+    if (index >= steps.length) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(28),
@@ -927,7 +930,7 @@ class _TodayPageState extends State<TodayPage> {
         ),
       );
     }
-    final step = widget.steps[index];
+    final step = steps[index];
     final running = startedAt != null && targetEnd != null;
     final overdue = running && now.isAfter(targetEnd!);
     final difference = running ? targetEnd!.difference(now) : Duration.zero;
@@ -951,7 +954,7 @@ class _TodayPageState extends State<TodayPage> {
             child: Column(
               children: [
                 Text(
-                  '${index + 1} VON ${widget.steps.length}',
+                  '${index + 1} VON ${steps.length}',
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     color: Color(0xff667085),
@@ -1018,10 +1021,10 @@ class _TodayPageState extends State<TodayPage> {
               'Heutiger Ablauf',
               style: TextStyle(fontWeight: FontWeight.w800),
             ),
-            subtitle: Text('${index + 1} von ${widget.steps.length} aktiv'),
+            subtitle: Text('${index + 1} von ${steps.length} aktiv'),
             children: [
               const Divider(height: 1),
-              ...widget.steps.asMap().entries.map((entry) {
+              ...steps.asMap().entries.map((entry) {
                 final position = entry.key;
                 final planned = entry.value;
                 final isDone = position < index;
@@ -1030,13 +1033,13 @@ class _TodayPageState extends State<TodayPage> {
                     ? targetEnd!.difference(step.end)
                     : Duration.zero;
                 final shownStart = isCurrent && running
-                    ? startedAt!
+                    ? planned.start
                     : planned.start.add(shift);
                 final shownEnd = isCurrent && running
                     ? targetEnd!
                     : planned.end.add(shift);
                 final status = isDone
-                    ? 'Erledigt'
+                    ? 'Rückgemeldet'
                     : isCurrent && running
                     ? 'Aktiv · ${hhmm(shownStart)}–${hhmm(shownEnd)}'
                     : isCurrent
@@ -1099,9 +1102,13 @@ class _TodayPageState extends State<TodayPage> {
           if (overdue) ...[
             const SizedBox(height: 8),
             OutlinedButton.icon(
-              onPressed: silenceAlarm,
-              icon: const Icon(Icons.notifications_off_outlined),
-              label: const Text('ALARM STUMMSCHALTEN'),
+              onPressed: snoozeAlarm,
+              icon: const Icon(Icons.snooze),
+              label: Text(
+                snoozeUntil != null
+                    ? 'ERINNERUNG ${hhmm(snoozeUntil!)}'
+                    : 'IN 5 MINUTEN ERNEUT ERINNERN',
+              ),
             ),
           ],
         ],
@@ -1111,17 +1118,13 @@ class _TodayPageState extends State<TodayPage> {
 
   void start() {
     final current = DateTime.now();
-    final step = widget.steps[index];
+    final step = steps[index];
     setState(() {
       startedAt = current;
-      targetEnd = addProductiveMinutes(
-        current,
-        step.productiveSeconds / 60,
-        step.pauseStart,
-        step.pauseEnd,
-      );
+      targetEnd = step.end;
       now = current;
       alarmed = false;
+      snoozeUntil = null;
     });
     timer?.cancel();
     timer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
@@ -1137,15 +1140,17 @@ class _TodayPageState extends State<TodayPage> {
   void tick() {
     if (!mounted || targetEnd == null) return;
     setState(() => now = DateTime.now());
-    if (!alarmed && !now.isBefore(targetEnd!)) {
+    final reminderDue = snoozeUntil == null || !now.isBefore(snoozeUntil!);
+    if (!alarmed && reminderDue && !now.isBefore(targetEnd!)) {
       alarmed = true;
+      snoozeUntil = null;
       SystemSound.play(SystemSoundType.alert);
       HapticFeedback.heavyImpact();
     }
   }
 
   Future<void> reportAndFinish() async {
-    final step = widget.steps[index];
+    final step = steps[index];
     final draft = await showModalBottomSheet<_ReportDraft>(
       context: context,
       isScrollControlled: true,
@@ -1172,27 +1177,51 @@ class _TodayPageState extends State<TodayPage> {
       note: draft.note,
     );
     await widget.onReport(report);
-    if (mounted) finish();
+    if (mounted) finish(draft.endedAt);
   }
 
-  void finish() {
+  void finish(DateTime reportedEnd) {
     timer?.cancel();
     AlarmService.instance.cancel();
     setState(() {
+      _replanFutureFrom(reportedEnd);
       index++;
       startedAt = null;
       targetEnd = null;
       alarmed = false;
+      snoozeUntil = null;
     });
-    widget.onSessionChanged(index >= widget.steps.length ? null : _snapshot());
+    widget.onSessionChanged(index >= steps.length ? null : _snapshot());
   }
 
-  void silenceAlarm() {
+  void _replanFutureFrom(DateTime reportedEnd) {
+    var cursor = reportedEnd;
+    for (var position = index + 1; position < steps.length; position++) {
+      final planned = steps[position];
+      final end = addProductiveMinutes(
+        cursor,
+        planned.productiveSeconds / 60,
+        planned.pauseStart,
+        planned.pauseEnd,
+      );
+      steps[position] = planned.copyWith(start: cursor, end: end);
+      cursor = end;
+    }
+  }
+
+  void snoozeAlarm() {
     AlarmService.instance.cancel();
-    setState(() => alarmed = true);
+    final reminder = DateTime.now().add(const Duration(minutes: 5));
+    setState(() {
+      alarmed = false;
+      snoozeUntil = reminder;
+    });
+    AlarmService.instance.schedule(reminder, steps[index].item.name);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Alarm stumm – die aktuelle Arbeit läuft weiter.'),
+      SnackBar(
+        content: Text(
+          'Arbeit läuft weiter – erneute Erinnerung um ${hhmm(reminder)}.',
+        ),
       ),
     );
   }
@@ -1241,11 +1270,11 @@ class _TodayPageState extends State<TodayPage> {
       alarmed = false;
     });
     widget.onSessionChanged(_snapshot());
-    AlarmService.instance.schedule(candidate, widget.steps[index].item.name);
+    AlarmService.instance.schedule(candidate, steps[index].item.name);
   }
 
   WorkSessionSnapshot _snapshot() => WorkSessionSnapshot(
-    steps: widget.steps,
+    steps: steps,
     index: index,
     startedAt: startedAt,
     targetEnd: targetEnd,
@@ -1290,6 +1319,18 @@ class _ReportSheetState extends State<ReportSheet> {
   bool completedOrder = false;
   String? error;
 
+  DateTime get minuteNow => minutePrecision(DateTime.now());
+
+  DateTime get earliestAllowed =>
+      minuteNow.subtract(const Duration(minutes: 59));
+
+  bool get planTimeAllowed {
+    final plan = _minute(widget.plannedEnd);
+    return !plan.isBefore(earliestAllowed) && !plan.isAfter(minuteNow);
+  }
+
+  DateTime _minute(DateTime value) => minutePrecision(value);
+
   @override
   void initState() {
     super.initState();
@@ -1299,7 +1340,7 @@ class _ReportSheetState extends State<ReportSheet> {
     reportedController = TextEditingController(
       text: '${widget.step.wholePieces}',
     );
-    endedAt = DateTime.now();
+    endedAt = minuteNow;
   }
 
   @override
@@ -1341,10 +1382,13 @@ class _ReportSheetState extends State<ReportSheet> {
       setState(() => error = 'Bitte gültige, ganze Stückzahlen eingeben.');
       return;
     }
-    if (endedAt.isBefore(widget.startedAt)) {
-      setState(
-        () => error = 'Die Abmeldezeit darf nicht vor der Startzeit liegen.',
-      );
+    final timeError = validateReportTime(
+      now: DateTime.now(),
+      startedAt: widget.startedAt,
+      reportedAt: endedAt,
+    );
+    if (timeError != null) {
+      setState(() => error = timeError);
       return;
     }
     Navigator.pop(
@@ -1424,6 +1468,44 @@ class _ReportSheetState extends State<ReportSheet> {
             trailing: const Icon(Icons.edit_outlined),
             onTap: pickEndTime,
           ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: () => setState(() {
+                  endedAt = minuteNow;
+                  error = null;
+                }),
+                icon: const Icon(Icons.schedule),
+                label: const Text('JETZT'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: planTimeAllowed
+                    ? () => setState(() {
+                        endedAt = _minute(widget.plannedEnd);
+                        error = null;
+                      })
+                    : null,
+                icon: const Icon(Icons.restart_alt),
+                label: const Text('PLANZEIT'),
+              ),
+              OutlinedButton.icon(
+                onPressed: pickEndTime,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('ANDERE ZEIT'),
+              ),
+            ],
+          ),
+          if (!planTimeAllowed)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text(
+                'Planzeit liegt außerhalb des erlaubten Zeitfensters.',
+                style: TextStyle(color: Color(0xff667085)),
+              ),
+            ),
+          const SizedBox(height: 12),
           TextField(
             controller: noteController,
             maxLines: 2,

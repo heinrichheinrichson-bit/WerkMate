@@ -28,6 +28,10 @@ Aktueller Umfang:
 - geschützte Rückmeldung mit tatsächlich bearbeiteten und betrieblich gemeldeten Stück
 - frei korrigierbare Abmeldezeit, Teil-/Gesamtabschluss und optionale Notiz
 - Rückmeldungen werden lokal für die spätere Historie gespeichert
+- Rückmeldezeit ausschließlich von jetzt bis maximal 59 Minuten zurück
+- Schnellwahl für aktuelle Uhrzeit oder zulässige Planzeit
+- Folgeaufträge werden lückenlos ab der betrieblichen Rückmeldezeit neu geplant
+- fünf Minuten Snooze bei erreichtem Soll-Ende; die Arbeit läuft dabei weiter
 
 Als nächste getrennte Bereiche sind die Historie sowie Einstellungen für
 System-, Hell- und Dunkelmodus vorgesehen.
