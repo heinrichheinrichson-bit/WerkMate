@@ -163,7 +163,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.13.4',
+              'Mobile 0.13.5',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -330,14 +330,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
     final related = reports.where(
       (saved) => sameWorkIdentity(saved.item, report.item),
     );
-    final previousActual = related.fold<int>(
-      0,
-      (total, saved) => total + saved.actualPieces,
-    );
-    final previousReported = related.fold<int>(
-      0,
-      (total, saved) => total + saved.reportedPieces,
-    );
+    final previous = calculateWorkTotals(related);
     if (report.item.isCredit) {
       final balances = calculateCreditBalances(reports);
       final matching = balances.where(
@@ -350,8 +343,8 @@ class _WerkMateHomeState extends State<WerkMateHome> {
         );
       }
     } else {
-      final totalActual = previousActual + report.actualPieces;
-      final totalReported = previousReported + report.reportedPieces;
+      final totalActual = previous.producedPieces + report.actualPieces;
+      final totalReported = previous.reportedPieces + report.reportedPieces;
       if (totalActual > report.item.quantity) {
         throw StateError(
           'Damit wären $totalActual/${report.item.quantity} Stück bearbeitet. Mehr als die Auftragsmenge ist nicht erlaubt.',

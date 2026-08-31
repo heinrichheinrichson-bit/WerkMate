@@ -164,6 +164,50 @@ void main() {
     expect(balances.single.availableMinutes, 45);
   });
 
+  test('using credit does not count as newly produced work', () {
+    const source = WorkItem(
+      id: 'source',
+      orderNumber: '40245678',
+      dieNumber: '1111',
+      operation: 'FP',
+      quantity: 10,
+      minutesPerPiece: 15,
+    );
+    const credit = WorkItem(
+      id: 'credit',
+      orderNumber: '40245678',
+      dieNumber: '1111',
+      operation: 'FP',
+      quantity: 5,
+      minutesPerPiece: 15,
+      isCredit: true,
+    );
+    final base = DateTime(2026, 8, 29, 8);
+    WorkReport report(WorkItem item, int actual, int reported) => WorkReport(
+      id: item.id,
+      item: item,
+      plannedPieces: item.quantity,
+      actualPieces: actual,
+      reportedPieces: reported,
+      startedAt: base,
+      endedAt: base,
+      plannedEnd: base,
+      completedOrder: false,
+      note: '',
+    );
+
+    final totals = calculateWorkTotals([
+      report(source, 10, 5),
+      report(credit, 5, 5),
+    ]);
+    expect(totals.producedPieces, 10);
+    expect(totals.reportedPieces, 10);
+    expect(
+      calculateCreditBalances([report(source, 10, 5), report(credit, 5, 5)]),
+      isEmpty,
+    );
+  });
+
   test('partial work becomes credit but impossible totals do not', () {
     final base = DateTime(2026, 8, 29, 8);
     WorkReport report(int quantity, int actual, int reported) => WorkReport(

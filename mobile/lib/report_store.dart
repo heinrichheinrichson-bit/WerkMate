@@ -105,6 +105,26 @@ bool sameWorkIdentity(WorkItem a, WorkItem b) =>
     a.dieNumber.trim().toUpperCase() == b.dieNumber.trim().toUpperCase() &&
     a.operation.trim().toUpperCase() == b.operation.trim().toUpperCase();
 
+class WorkTotals {
+  const WorkTotals({
+    required this.producedPieces,
+    required this.reportedPieces,
+  });
+
+  final int producedPieces;
+  final int reportedPieces;
+}
+
+WorkTotals calculateWorkTotals(Iterable<WorkReport> reports) => WorkTotals(
+  producedPieces: reports
+      .where((report) => !report.item.isCredit)
+      .fold(0, (total, report) => total + report.actualPieces),
+  reportedPieces: reports.fold(
+    0,
+    (total, report) => total + report.reportedPieces,
+  ),
+);
+
 List<CreditBalance> calculateCreditBalances(List<WorkReport> reports) {
   final grouped = <String, List<WorkReport>>{};
   for (final report in reports) {
@@ -118,14 +138,9 @@ List<CreditBalance> calculateCreditBalances(List<WorkReport> reports) {
   }
   final result = <CreditBalance>[];
   for (final entries in grouped.values) {
-    final produced = entries.fold<int>(
-      0,
-      (total, report) => total + report.actualPieces,
-    );
-    final reported = entries.fold<int>(
-      0,
-      (total, report) => total + report.reportedPieces,
-    );
+    final totals = calculateWorkTotals(entries);
+    final produced = totals.producedPieces;
+    final reported = totals.reportedPieces;
     final source = entries.lastWhere(
       (report) => !report.item.isCredit,
       orElse: () => entries.last,
