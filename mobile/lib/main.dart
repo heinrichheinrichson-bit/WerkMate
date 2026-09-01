@@ -165,7 +165,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.14.0',
+              'Mobile 0.15.0',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -1113,12 +1113,16 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
   );
 
   Future<void> scanCard() async {
-    final raw = await Navigator.push<String>(
+    final scan = await Navigator.push<CardScannerResult>(
       context,
       MaterialPageRoute(builder: (context) => const CardScannerPage()),
     );
-    if (raw == null || !mounted) return;
-    final data = parseCardText(raw);
+    if (scan == null || !mounted) return;
+    final combinedText = [
+      scan.qrValue,
+      if (scan.printedText.isNotEmpty) scan.printedText,
+    ].join('\n');
+    final data = parseCardText(combinedText);
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1130,7 +1134,12 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
             mainAxisSize: MainAxisSize.min,
             children: [
               _ScanValue(label: 'Auftragsnummer', value: data.orderNumber),
-              _ScanValue(label: 'Gesenknummer', value: data.dieNumber),
+              _ScanValue(
+                label: 'Gesenknummer',
+                value: data.rawDieNumber == null
+                    ? data.dieNumber
+                    : '${data.rawDieNumber} → ${data.dieNumber}',
+              ),
               _ScanValue(
                 label: 'Gesamtstück',
                 value: data.quantity?.toString(),
@@ -1141,7 +1150,18 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 4),
-              SelectableText(raw),
+              SelectableText(scan.qrValue),
+              const SizedBox(height: 14),
+              const Text(
+                'Erkannter Kartentext',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              SelectableText(
+                scan.printedText.isEmpty
+                    ? 'Kein zusätzlicher Text sicher erkannt.'
+                    : scan.printedText,
+              ),
               if (!data.hasRecognizedValue) ...[
                 const SizedBox(height: 12),
                 const Text(

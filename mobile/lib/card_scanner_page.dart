@@ -1,5 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:path_provider/path_provider.dart';
+
+class CardScannerResult {
+  const CardScannerResult({required this.qrValue, required this.printedText});
+
+  final String qrValue;
+  final String printedText;
+}
 
 class CardScannerPage extends StatefulWidget {
   const CardScannerPage({super.key});
@@ -12,8 +23,10 @@ class _CardScannerPageState extends State<CardScannerPage> {
   final controller = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
     formats: const [BarcodeFormat.qrCode],
+    returnImage: true,
   );
   bool returningResult = false;
+  bool recognizingText = false;
 
   Future<void> detected(BarcodeCapture capture) async {
     if (returningResult) return;
@@ -24,8 +37,39 @@ class _CardScannerPageState extends State<CardScannerPage> {
         .firstOrNull;
     if (raw == null) return;
     returningResult = true;
+    if (mounted) setState(() => recognizingText = true);
     await controller.stop();
-    if (mounted) Navigator.pop(context, raw);
+    final printedText = await recognizePrintedText(capture.image);
+    if (mounted) {
+      Navigator.pop(
+        context,
+        CardScannerResult(qrValue: raw, printedText: printedText),
+      );
+    }
+  }
+
+  Future<String> recognizePrintedText(List<int>? bytes) async {
+    if (bytes == null || bytes.isEmpty) return '';
+    File? temporaryImage;
+    final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+    try {
+      final directory = await getTemporaryDirectory();
+      temporaryImage = File(
+        '${directory.path}${Platform.pathSeparator}werkmate-card-${DateTime.now().microsecondsSinceEpoch}.jpg',
+      );
+      await temporaryImage.writeAsBytes(bytes, flush: true);
+      final text = await recognizer.processImage(
+        InputImage.fromFile(temporaryImage),
+      );
+      return text.text.trim();
+    } catch (_) {
+      return '';
+    } finally {
+      await recognizer.close();
+      if (temporaryImage != null && await temporaryImage.exists()) {
+        await temporaryImage.delete();
+      }
+    }
   }
 
   @override
@@ -83,6 +127,25 @@ class _CardScannerPageState extends State<CardScannerPage> {
             ),
           ),
         ),
+        if (recognizingText)
+          ColoredBox(
+            color: Color(0x99000000),
+            child: Center(
+              child: Card(
+                child: Padding(
+                  padding: EdgeInsets.all(22),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Gedruckte Angaben werden gelesen …'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     ),
   );

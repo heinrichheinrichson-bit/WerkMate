@@ -21,8 +21,10 @@ void main() {
   test('recognized card text can add die number and quantity', () {
     final scan = parseCardText('FA|4022377\nGN 4583-00\nGesamtmenge [FA] 24');
     expect(scan.orderNumber, '4022377');
-    expect(scan.dieNumber, '4583-00');
+    expect(scan.rawDieNumber, '4583-00');
+    expect(scan.dieNumber, '4583');
     expect(scan.quantity, 24);
+    expect(normalizeDieNumber('4583-01'), '4583');
   });
 
   test('work reports are stored locally with deviations', () async {

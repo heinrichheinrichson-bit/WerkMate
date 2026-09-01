@@ -3,12 +3,14 @@ class CardScanData {
     required this.rawValue,
     this.orderNumber,
     this.dieNumber,
+    this.rawDieNumber,
     this.quantity,
   });
 
   final String rawValue;
   final String? orderNumber;
   final String? dieNumber;
+  final String? rawDieNumber;
   final int? quantity;
 
   bool get hasRecognizedValue =>
@@ -22,7 +24,7 @@ CardScanData parseCardText(String rawValue) {
   final orderNumber = firstMatch(
     RegExp(r'(?:^|[\s|;])FA\s*[|:;]\s*([A-Z0-9-]+)', caseSensitive: false),
   );
-  final dieNumber = firstMatch(
+  final rawDieNumber = firstMatch(
     RegExp(r'(?:^|\s)GN\s*[:|;]?\s*([0-9]+(?:-[0-9]+)?)', caseSensitive: false),
   );
   final quantityText = firstMatch(
@@ -32,7 +34,14 @@ CardScanData parseCardText(String rawValue) {
   return CardScanData(
     rawValue: rawValue,
     orderNumber: orderNumber,
-    dieNumber: dieNumber,
+    dieNumber: normalizeDieNumber(rawDieNumber),
+    rawDieNumber: rawDieNumber,
     quantity: int.tryParse(quantityText ?? ''),
   );
+}
+
+String? normalizeDieNumber(String? value) {
+  final trimmed = value?.trim();
+  if (trimmed == null || trimmed.isEmpty) return null;
+  return trimmed.replaceFirst(RegExp(r'-\d{2}$'), '');
 }
