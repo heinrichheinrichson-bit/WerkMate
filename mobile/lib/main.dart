@@ -8,6 +8,7 @@ import 'alarm_service.dart';
 import 'app_settings_store.dart';
 import 'card_scan.dart';
 import 'card_scanner_page.dart';
+import 'die_catalog_store.dart';
 import 'plan_store.dart';
 import 'report_store.dart';
 import 'work_session_store.dart';
@@ -109,9 +110,11 @@ class _WerkMateHomeState extends State<WerkMateHome> {
   final store = PlanStore();
   final sessionStore = WorkSessionStore();
   final reportStore = ReportStore();
+  final catalogStore = DieCatalogStore();
   int page = 1;
   List<ShiftPlan> saved = [];
   List<WorkReport> reports = [];
+  List<DieCatalogEntry> catalog = [];
   List<ScheduleStep> activeSteps = [];
   WorkSessionSnapshot? restoredSession;
   int runKey = 0;
@@ -126,6 +129,9 @@ class _WerkMateHomeState extends State<WerkMateHome> {
     });
     reportStore.load().then((value) {
       if (mounted) setState(() => reports = value);
+    });
+    catalogStore.load().then((value) {
+      if (mounted) setState(() => catalog = value);
     });
     sessionStore.load().then((value) {
       if (mounted && value != null && value.index < value.steps.length) {
@@ -165,7 +171,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.15.2',
+              'Mobile 0.16.0',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -180,12 +186,16 @@ class _WerkMateHomeState extends State<WerkMateHome> {
             key: ValueKey(runKey),
             steps: activeSteps,
             restored: restoredSession,
+            catalog: catalog,
+            onCatalogSave: saveCatalogEntry,
             onSessionChanged: persistSession,
             onReport: saveReport,
           ),
           PlanPage(
             plan: draft,
             activeDay: activeSteps.isNotEmpty && restoredSession != null,
+            catalog: catalog,
+            onCatalogSave: saveCatalogEntry,
             onChanged: (value) => setState(() => draft = value),
             onSave: saveDraft,
             onStart: startPlan,
@@ -202,8 +212,10 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           MorePage(
             reportCount: reports.length,
             creditCount: availableCredits().length,
+            catalogCount: catalog.length,
             onHistory: openHistory,
             onCredits: openCredits,
+            onCatalog: openCatalog,
             onSettings: openSettings,
           ),
         ],
@@ -389,6 +401,29 @@ class _WerkMateHomeState extends State<WerkMateHome> {
     );
   }
 
+  Future<void> saveCatalogEntry(DieCatalogEntry entry) async {
+    final copy = [...catalog];
+    final index = copy.indexWhere((saved) => saved.key == entry.key);
+    if (index >= 0) {
+      copy[index] = entry;
+    } else {
+      copy.add(entry);
+    }
+    copy.sort((a, b) => a.key.compareTo(b.key));
+    await catalogStore.write(copy);
+    if (mounted) setState(() => catalog = copy);
+  }
+
+  Future<void> openCatalog() async {
+    final updated = await Navigator.push<List<DieCatalogEntry>>(
+      context,
+      MaterialPageRoute(builder: (context) => DieCatalogPage(entries: catalog)),
+    );
+    if (updated == null || !mounted) return;
+    await catalogStore.write(updated);
+    if (mounted) setState(() => catalog = updated);
+  }
+
   Future<void> openCredits() async {
     await Navigator.push<void>(
       context,
@@ -541,12 +576,16 @@ class PlanPage extends StatefulWidget {
     super.key,
     required this.plan,
     required this.activeDay,
+    required this.catalog,
+    required this.onCatalogSave,
     required this.onChanged,
     required this.onSave,
     required this.onStart,
   });
   final ShiftPlan plan;
   final bool activeDay;
+  final List<DieCatalogEntry> catalog;
+  final Future<void> Function(DieCatalogEntry) onCatalogSave;
   final ValueChanged<ShiftPlan> onChanged;
   final VoidCallback onSave;
   final ValueChanged<List<ScheduleStep>> onStart;
@@ -989,7 +1028,11 @@ class _PlanPageState extends State<PlanPage> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (context) => WorkItemSheet(item: current),
+      builder: (context) => WorkItemSheet(
+        item: current,
+        catalog: widget.catalog,
+        onCatalogSave: widget.onCatalogSave,
+      ),
     );
     if (result == null) return;
     final items = [...widget.plan.items];
@@ -999,8 +1042,15 @@ class _PlanPageState extends State<PlanPage> {
 }
 
 class WorkItemSheet extends StatefulWidget {
-  const WorkItemSheet({super.key, this.item});
+  const WorkItemSheet({
+    super.key,
+    this.item,
+    this.catalog = const [],
+    this.onCatalogSave,
+  });
   final WorkItem? item;
+  final List<DieCatalogEntry> catalog;
+  final Future<void> Function(DieCatalogEntry)? onCatalogSave;
   @override
   State<WorkItemSheet> createState() => _WorkItemSheetState();
 }
@@ -1021,6 +1071,7 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
     minutes = TextEditingController(
       text: widget.item == null ? '' : _number(widget.item!.minutesPerPiece),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) => applyCatalogMatch());
   }
 
   @override
@@ -1049,6 +1100,7 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
           TextField(
             controller: dieNumber,
             autofocus: true,
+            onChanged: (_) => applyCatalogMatch(),
             decoration: const InputDecoration(labelText: 'Gesenknummer'),
           ),
           const SizedBox(height: 12),
@@ -1066,6 +1118,7 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
               Expanded(
                 child: TextField(
                   controller: operation,
+                  onChanged: (_) => applyCatalogMatch(),
                   textCapitalization: TextCapitalization.characters,
                   decoration: const InputDecoration(
                     labelText: 'Arbeitsgang',
@@ -1192,21 +1245,132 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
       if (data.quantity != null) quantity.text = data.quantity.toString();
       error = null;
     });
+    applyCatalogMatch();
   }
 
-  void submit() {
+  void applyCatalogMatch() {
+    if (minutes.text.trim().isNotEmpty) return;
+    final die = normalizeDieNumber(dieNumber.text);
+    if (die == null) return;
+    final operationValue = operation.text.trim().toUpperCase();
+    final matchingDie = widget.catalog
+        .where((entry) => entry.normalizedDieNumber == die)
+        .toList();
+    DieCatalogEntry? match;
+    if (operationValue.isNotEmpty) {
+      match = matchingDie
+          .where((entry) => entry.normalizedOperation == operationValue)
+          .firstOrNull;
+    } else if (matchingDie.length == 1) {
+      match = matchingDie.single;
+      operation.text = match.normalizedOperation;
+    }
+    if (match != null) {
+      minutes.text = _number(match.minutesPerPiece);
+      if (mounted) setState(() => error = null);
+    }
+  }
+
+  Future<void> submit() async {
     final amount = int.tryParse(quantity.text.trim());
-    final pieceTime = double.tryParse(minutes.text.trim().replaceAll(',', '.'));
+    var pieceTime = double.tryParse(minutes.text.trim().replaceAll(',', '.'));
     if (amount == null || amount <= 0 || pieceTime == null || pieceTime <= 0) {
       setState(() => error = 'Bitte Gesamtstück und Stückzeit prüfen.');
       return;
     }
+    final normalizedDie = normalizeDieNumber(dieNumber.text);
+    final normalizedOperation = operation.text.trim().toUpperCase();
+    if (normalizedDie != null &&
+        normalizedOperation.isNotEmpty &&
+        widget.onCatalogSave != null) {
+      final existing = widget.catalog
+          .where(
+            (entry) =>
+                entry.normalizedDieNumber == normalizedDie &&
+                entry.normalizedOperation == normalizedOperation,
+          )
+          .firstOrNull;
+      if (existing == null) {
+        final remember = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            icon: const Icon(Icons.bookmark_add_outlined),
+            title: const Text('Für später merken?'),
+            content: Text(
+              'Gesenk $normalizedDie · $normalizedOperation · ${_number(pieceTime!)} min/Stück ist noch nicht im Katalog.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('NUR DIESER AUFTRAG'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('IM KATALOG SPEICHERN'),
+              ),
+            ],
+          ),
+        );
+        if (!mounted) return;
+        if (remember == true) {
+          await widget.onCatalogSave!(
+            DieCatalogEntry(
+              id: DateTime.now().microsecondsSinceEpoch.toString(),
+              dieNumber: normalizedDie,
+              operation: normalizedOperation,
+              minutesPerPiece: pieceTime,
+            ),
+          );
+        }
+      } else if ((existing.minutesPerPiece - pieceTime).abs() > 0.0001) {
+        final choice = await showDialog<String>(
+          context: context,
+          builder: (context) => AlertDialog(
+            icon: const Icon(Icons.compare_arrows),
+            title: const Text('Andere Stückzeit erkannt'),
+            content: Text(
+              'Im Katalog stehen ${_number(existing.minutesPerPiece)} min/Stück. Für diesen Auftrag wurden ${_number(pieceTime!)} min/Stück eingegeben.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'once'),
+                child: const Text('NUR DIESMAL'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'catalog'),
+                child: const Text('KATALOGZEIT VERWENDEN'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, 'update'),
+                child: const Text('KATALOG AKTUALISIEREN'),
+              ),
+            ],
+          ),
+        );
+        if (!mounted || choice == null) return;
+        if (choice == 'catalog') {
+          pieceTime = existing.minutesPerPiece;
+          minutes.text = _number(pieceTime);
+        } else if (choice == 'update') {
+          await widget.onCatalogSave!(
+            DieCatalogEntry(
+              id: existing.id,
+              dieNumber: normalizedDie,
+              operation: normalizedOperation,
+              minutesPerPiece: pieceTime,
+              note: existing.note,
+            ),
+          );
+        }
+      }
+    }
+    if (!mounted) return;
     Navigator.pop(
       context,
       WorkItem(
         id: widget.item?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
         orderNumber: orderNumber.text.trim(),
-        dieNumber: dieNumber.text.trim(),
+        dieNumber: normalizedDie ?? dieNumber.text.trim(),
         operation: operation.text.trim().toUpperCase(),
         roundingChoice: widget.item?.roundingChoice ?? RoundingChoice.automatic,
         quantity: amount,
@@ -1245,11 +1409,15 @@ class TodayPage extends StatefulWidget {
     super.key,
     required this.steps,
     required this.restored,
+    required this.catalog,
+    required this.onCatalogSave,
     required this.onSessionChanged,
     required this.onReport,
   });
   final List<ScheduleStep> steps;
   final WorkSessionSnapshot? restored;
+  final List<DieCatalogEntry> catalog;
+  final Future<void> Function(DieCatalogEntry) onCatalogSave;
   final ValueChanged<WorkSessionSnapshot?> onSessionChanged;
   final Future<void> Function(WorkReport) onReport;
   @override
@@ -1664,7 +1832,10 @@ class _TodayPageState extends State<TodayPage> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (context) => const WorkItemSheet(),
+      builder: (context) => WorkItemSheet(
+        catalog: widget.catalog,
+        onCatalogSave: widget.onCatalogSave,
+      ),
     );
     if (item == null || !mounted) return;
     final previous = steps.last;
@@ -2150,17 +2321,302 @@ class PlansPage extends StatelessWidget {
   );
 }
 
+class DieCatalogPage extends StatefulWidget {
+  const DieCatalogPage({super.key, required this.entries});
+
+  final List<DieCatalogEntry> entries;
+
+  @override
+  State<DieCatalogPage> createState() => _DieCatalogPageState();
+}
+
+class _DieCatalogPageState extends State<DieCatalogPage> {
+  late List<DieCatalogEntry> entries = List.of(widget.entries);
+  String search = '';
+
+  List<DieCatalogEntry> get filtered {
+    final query = search.trim().toLowerCase();
+    if (query.isEmpty) return entries;
+    return entries
+        .where(
+          (entry) =>
+              entry.normalizedDieNumber.toLowerCase().contains(query) ||
+              entry.normalizedOperation.toLowerCase().contains(query) ||
+              entry.note.toLowerCase().contains(query),
+        )
+        .toList();
+  }
+
+  Future<void> edit([DieCatalogEntry? entry]) async {
+    final result = await showModalBottomSheet<DieCatalogEntry>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => _CatalogEntrySheet(entry: entry),
+    );
+    if (result == null || !mounted) return;
+    final duplicate = entries.where(
+      (candidate) => candidate.key == result.key && candidate.id != result.id,
+    );
+    if (duplicate.isNotEmpty) {
+      final replace = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Vorgabe bereits vorhanden'),
+          content: Text(
+            'Für Gesenk ${result.normalizedDieNumber} · ${result.normalizedOperation} gibt es schon einen Eintrag. Soll er ersetzt werden?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('ABBRECHEN'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('ERSETZEN'),
+            ),
+          ],
+        ),
+      );
+      if (replace != true || !mounted) return;
+      entries.removeWhere((candidate) => candidate.key == result.key);
+    }
+    setState(() {
+      final index = entries.indexWhere(
+        (candidate) => candidate.id == result.id,
+      );
+      if (index < 0) {
+        entries.add(result);
+      } else {
+        entries[index] = result;
+      }
+      entries.sort((a, b) => a.key.compareTo(b.key));
+    });
+  }
+
+  Future<void> delete(DieCatalogEntry entry) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Vorgabe löschen?'),
+        content: Text(
+          'Gesenk ${entry.normalizedDieNumber} · ${entry.normalizedOperation} wird aus dem lokalen Katalog entfernt.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('ABBRECHEN'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('LÖSCHEN'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      setState(() => entries.removeWhere((item) => item.id == entry.id));
+    }
+  }
+
+  void close() => Navigator.pop(context, entries);
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: false,
+    onPopInvokedWithResult: (didPop, result) {
+      if (!didPop) close();
+    },
+    child: Scaffold(
+      appBar: AppBar(
+        title: const Text('Gesenkkatalog'),
+        leading: IconButton(
+          onPressed: close,
+          icon: const Icon(Icons.arrow_back),
+        ),
+      ),
+      body: ResponsivePage(
+        children: [
+          TextField(
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              labelText: 'Gesenk oder Arbeitsgang suchen',
+            ),
+            onChanged: (value) => setState(() => search = value),
+          ),
+          const SizedBox(height: 16),
+          if (filtered.isEmpty)
+            const EmptyCard(
+              icon: Icons.precision_manufacturing_outlined,
+              text: 'Noch keine passende Vorgabe gespeichert.',
+            )
+          else
+            ...filtered.map(
+              (entry) => Card(
+                child: ListTile(
+                  title: Text(
+                    'Gesenk ${entry.normalizedDieNumber} · ${entry.normalizedOperation}',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  subtitle: Text(
+                    '${_number(entry.minutesPerPiece)} min/Stück${entry.note.trim().isEmpty ? '' : ' · ${entry.note.trim()}'}',
+                  ),
+                  onTap: () => edit(entry),
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'edit') edit(entry);
+                      if (value == 'delete') delete(entry);
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'edit', child: Text('Bearbeiten')),
+                      PopupMenuItem(value: 'delete', child: Text('Löschen')),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 88),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: edit,
+        icon: const Icon(Icons.add),
+        label: const Text('VORGABE'),
+      ),
+    ),
+  );
+}
+
+class _CatalogEntrySheet extends StatefulWidget {
+  const _CatalogEntrySheet({this.entry});
+  final DieCatalogEntry? entry;
+
+  @override
+  State<_CatalogEntrySheet> createState() => _CatalogEntrySheetState();
+}
+
+class _CatalogEntrySheetState extends State<_CatalogEntrySheet> {
+  late final die = TextEditingController(text: widget.entry?.dieNumber ?? '');
+  late final operation = TextEditingController(
+    text: widget.entry?.operation ?? '',
+  );
+  late final minutes = TextEditingController(
+    text: widget.entry == null ? '' : _number(widget.entry!.minutesPerPiece),
+  );
+  late final note = TextEditingController(text: widget.entry?.note ?? '');
+  String? error;
+
+  @override
+  void dispose() {
+    die.dispose();
+    operation.dispose();
+    minutes.dispose();
+    note.dispose();
+    super.dispose();
+  }
+
+  void submit() {
+    final normalizedDie = normalizeDieNumber(die.text);
+    final normalizedOperation = operation.text.trim().toUpperCase();
+    final pieceTime = double.tryParse(minutes.text.trim().replaceAll(',', '.'));
+    if (normalizedDie == null ||
+        normalizedOperation.isEmpty ||
+        pieceTime == null ||
+        pieceTime <= 0) {
+      setState(() => error = 'Bitte Gesenk, Arbeitsgang und Stückzeit prüfen.');
+      return;
+    }
+    Navigator.pop(
+      context,
+      DieCatalogEntry(
+        id:
+            widget.entry?.id ??
+            DateTime.now().microsecondsSinceEpoch.toString(),
+        dieNumber: normalizedDie,
+        operation: normalizedOperation,
+        minutesPerPiece: pieceTime,
+        note: note.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.fromLTRB(
+      20,
+      20,
+      20,
+      MediaQuery.viewInsetsOf(context).bottom + 24,
+    ),
+    child: SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            widget.entry == null ? 'Vorgabe hinzufügen' : 'Vorgabe bearbeiten',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: die,
+            decoration: const InputDecoration(labelText: 'Gesenknummer'),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: operation,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(labelText: 'Arbeitsgang'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: minutes,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(labelText: 'min/Stück'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: note,
+            decoration: const InputDecoration(labelText: 'Notiz (optional)'),
+          ),
+          if (error != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
+          const SizedBox(height: 20),
+          FilledButton(onPressed: submit, child: const Text('SPEICHERN')),
+        ],
+      ),
+    ),
+  );
+}
+
 class MorePage extends StatelessWidget {
   const MorePage({
     super.key,
     required this.reportCount,
     required this.creditCount,
+    required this.catalogCount,
     required this.onHistory,
     required this.onCredits,
+    required this.onCatalog,
     required this.onSettings,
   });
-  final int reportCount, creditCount;
-  final VoidCallback onHistory, onCredits, onSettings;
+  final int reportCount, creditCount, catalogCount;
+  final VoidCallback onHistory, onCredits, onCatalog, onSettings;
 
   @override
   Widget build(BuildContext context) => ResponsivePage(
@@ -2197,10 +2653,16 @@ class MorePage extends StatelessWidget {
               onTap: onHistory,
             ),
             const Divider(height: 1),
-            const ListTile(
-              leading: Icon(Icons.precision_manufacturing_outlined),
-              title: Text('Gesenkkatalog'),
-              subtitle: Text('Folgt als eigener Bereich'),
+            ListTile(
+              leading: const Icon(Icons.precision_manufacturing_outlined),
+              title: const Text('Gesenkkatalog'),
+              subtitle: Text(
+                catalogCount == 1
+                    ? '1 Vorgabe lokal gespeichert'
+                    : '$catalogCount Vorgaben lokal gespeichert',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: onCatalog,
             ),
             const Divider(height: 1),
             ListTile(

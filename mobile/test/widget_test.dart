@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:werkmate_mobile/domain.dart';
 import 'package:werkmate_mobile/app_settings_store.dart';
 import 'package:werkmate_mobile/card_scan.dart';
+import 'package:werkmate_mobile/die_catalog_store.dart';
 import 'package:werkmate_mobile/main.dart';
 import 'package:werkmate_mobile/report_store.dart';
 import 'package:werkmate_mobile/work_session_store.dart';
@@ -16,6 +17,30 @@ void main() {
     expect(scan.orderNumber, '4022377');
     expect(scan.dieNumber, isNull);
     expect(scan.quantity, isNull);
+  });
+
+  test('die catalog is local, normalized and separated by operation', () async {
+    final store = DieCatalogStore();
+    await store.write(const [
+      DieCatalogEntry(
+        id: '1',
+        dieNumber: '4583-00',
+        operation: 'fp',
+        minutesPerPiece: 12.5,
+      ),
+      DieCatalogEntry(
+        id: '2',
+        dieNumber: '4583-01',
+        operation: 'ZP',
+        minutesPerPiece: 15,
+      ),
+    ]);
+
+    final loaded = await store.load();
+    expect(loaded, hasLength(2));
+    expect(loaded.first.normalizedDieNumber, '4583');
+    expect(loaded.first.normalizedOperation, 'FP');
+    expect(loaded.map((entry) => entry.key).toSet(), {'4583|FP', '4583|ZP'});
   });
 
   test('recognized card text can add die number and quantity', () {
@@ -403,6 +428,8 @@ void main() {
           body: PlanPage(
             plan: plan,
             activeDay: false,
+            catalog: const [],
+            onCatalogSave: (_) async {},
             onChanged: (_) {},
             onSave: () {},
             onStart: (_) {},
@@ -462,6 +489,8 @@ void main() {
           body: TodayPage(
             steps: steps,
             restored: restored,
+            catalog: const [],
+            onCatalogSave: (_) async {},
             onSessionChanged: (value) => changedSession = value,
             onReport: (_) async {},
           ),
