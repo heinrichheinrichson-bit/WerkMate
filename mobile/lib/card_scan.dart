@@ -33,16 +33,27 @@ CardScanData parseCardText(String rawValue) {
       .where((line) => RegExp(r'^\d{3,7}-\d{2}$').hasMatch(line))
       .firstOrNull;
   final rawDieNumber = labeledDieNumber ?? standaloneDieNumber;
-  final quantityText = firstMatch(
+  final labeledQuantity = firstMatch(
     RegExp(r'Gesamtmenge(?:\s*\[FA\])?\s*[:|;]?\s*(\d+)', caseSensitive: false),
   );
+  final standaloneNumbers = rawValue
+      .split(RegExp(r'[\r\n]+'))
+      .map((line) => line.trim())
+      .where((line) => RegExp(r'^\d{1,5}$').hasMatch(line))
+      .toList();
+  String? repeatedQuantity;
+  if (standaloneNumbers.length >= 2 &&
+      standaloneNumbers.last ==
+          standaloneNumbers[standaloneNumbers.length - 2]) {
+    repeatedQuantity = standaloneNumbers.last;
+  }
 
   return CardScanData(
     rawValue: rawValue,
     orderNumber: orderNumber,
     dieNumber: normalizeDieNumber(rawDieNumber),
     rawDieNumber: rawDieNumber,
-    quantity: int.tryParse(quantityText ?? ''),
+    quantity: int.tryParse(labeledQuantity ?? repeatedQuantity ?? ''),
   );
 }
 
