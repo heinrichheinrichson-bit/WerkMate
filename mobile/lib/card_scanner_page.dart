@@ -29,6 +29,8 @@ class _CardScannerPageState extends State<CardScannerPage> {
   bool recognizingText = false;
   String? qrValue;
   List<int>? latestImage;
+  final recentImages = <List<int>>[];
+  DateTime? lastImageAt;
 
   void detected(BarcodeCapture capture) {
     if (recognizingText) return;
@@ -38,7 +40,17 @@ class _CardScannerPageState extends State<CardScannerPage> {
         .where((value) => value.isNotEmpty)
         .firstOrNull;
     if (raw == null) return;
-    latestImage = capture.image ?? latestImage;
+    final image = capture.image;
+    if (image != null && image.isNotEmpty) {
+      latestImage = image;
+      final now = DateTime.now();
+      if (lastImageAt == null ||
+          now.difference(lastImageAt!).inMilliseconds >= 180) {
+        recentImages.add(image);
+        if (recentImages.length > 4) recentImages.removeAt(0);
+        lastImageAt = now;
+      }
+    }
     if (qrValue != raw && mounted) setState(() => qrValue = raw);
   }
 
@@ -47,14 +59,45 @@ class _CardScannerPageState extends State<CardScannerPage> {
     final image = latestImage;
     if (raw == null || image == null || recognizingText) return;
     setState(() => recognizingText = true);
+    await Future<void>.delayed(const Duration(milliseconds: 350));
     await controller.stop();
-    final printedText = await recognizePrintedText(image);
+    final images = recentImages.isEmpty ? [image] : [...recentImages];
+    final candidates = <String>[];
+    for (final candidateImage in images.reversed.take(3)) {
+      final text = await recognizePrintedText(candidateImage);
+      if (text.isNotEmpty) candidates.add(text);
+    }
+    final printedText = candidates.isEmpty
+        ? ''
+        : candidates.reduce(
+            (best, candidate) =>
+                _recognitionScore(candidate) > _recognitionScore(best)
+                ? candidate
+                : best,
+          );
     if (mounted) {
       Navigator.pop(
         context,
         CardScannerResult(qrValue: raw, printedText: printedText),
       );
     }
+  }
+
+  int _recognitionScore(String text) {
+    var score = text.length;
+    if (RegExp(r'\d{3,7}\s*[-‐‑‒–—−]\s*\d{2}').hasMatch(text)) {
+      score += 1000;
+    }
+    if (RegExp(r'Gesamtmenge', caseSensitive: false).hasMatch(text)) {
+      score += 300;
+    }
+    if (RegExp(
+      r'Gesamtmenge\s*\[?FA\]?',
+      caseSensitive: false,
+    ).hasMatch(text)) {
+      score += 500;
+    }
+    return score;
   }
 
   Future<String> recognizePrintedText(List<int>? bytes) async {

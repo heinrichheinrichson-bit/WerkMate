@@ -29,13 +29,19 @@ CardScanData parseCardText(String rawValue) {
   );
   final standaloneDieNumber = rawValue
       .split(RegExp(r'[\r\n]+'))
-      .map((line) => line.trim())
+      .map(
+        (line) => line
+            .trim()
+            .replaceAll(RegExp(r'[‐‑‒–—−]'), '-')
+            .replaceAll(RegExp(r'\s*-\s*'), '-'),
+      )
       .where((line) => RegExp(r'^\d{3,7}-\d{2}$').hasMatch(line))
       .firstOrNull;
-  final possibleRawDieNumber = labeledDieNumber ?? standaloneDieNumber;
-  final rawDieNumber = normalizeDieNumber(possibleRawDieNumber) == orderNumber
+  final safeLabeledDieNumber =
+      normalizeDieNumber(labeledDieNumber) == orderNumber
       ? null
-      : possibleRawDieNumber;
+      : labeledDieNumber;
+  final rawDieNumber = safeLabeledDieNumber ?? standaloneDieNumber;
   final labeledQuantity = firstMatch(
     RegExp(r'Gesamtmenge(?:\s*\[FA\])?\s*[:|;]?\s*(\d+)', caseSensitive: false),
   );

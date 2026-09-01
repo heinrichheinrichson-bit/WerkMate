@@ -66,6 +66,15 @@ void main() {
     expect(scan.quantity, 24);
   });
 
+  test('standalone die is fallback when GN is assigned to order by OCR', () {
+    final scan = parseCardText(
+      'FA|4022377\nGN\n4022377\nWerkstoff\n4583–00\nL334\n24\n24',
+    );
+    expect(scan.orderNumber, '4022377');
+    expect(scan.dieNumber, '4583');
+    expect(scan.quantity, 24);
+  });
+
   test('repeated final card quantities are safely recognized', () {
     final scan = parseCardText(
       'FA|4022377\n4022377\n4583-00\nL334\nB24B52\n24\n24',
