@@ -3,12 +3,27 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:werkmate_mobile/domain.dart';
 import 'package:werkmate_mobile/app_settings_store.dart';
+import 'package:werkmate_mobile/card_scan.dart';
 import 'package:werkmate_mobile/main.dart';
 import 'package:werkmate_mobile/report_store.dart';
 import 'package:werkmate_mobile/work_session_store.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test('company card QR payload fills the order number', () {
+    final scan = parseCardText('FA|4022377');
+    expect(scan.orderNumber, '4022377');
+    expect(scan.dieNumber, isNull);
+    expect(scan.quantity, isNull);
+  });
+
+  test('recognized card text can add die number and quantity', () {
+    final scan = parseCardText('FA|4022377\nGN 4583-00\nGesamtmenge [FA] 24');
+    expect(scan.orderNumber, '4022377');
+    expect(scan.dieNumber, '4583-00');
+    expect(scan.quantity, 24);
+  });
 
   test('work reports are stored locally with deviations', () async {
     final store = ReportStore();

@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'domain.dart';
 import 'alarm_service.dart';
 import 'app_settings_store.dart';
+import 'card_scan.dart';
+import 'card_scanner_page.dart';
 import 'plan_store.dart';
 import 'report_store.dart';
 import 'work_session_store.dart';
@@ -163,7 +165,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.13.5',
+              'Mobile 0.14.0',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -1024,81 +1026,154 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
   @override
   Widget build(BuildContext context) => Padding(
     padding: EdgeInsets.fromLTRB(20, 18, 20, _bottomSheetInset(context)),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          widget.item == null ? 'Arbeit hinzufügen' : 'Arbeit bearbeiten',
-          style: Theme.of(
-            context,
-          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 18),
-        TextField(
-          controller: dieNumber,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Gesenknummer'),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: orderNumber,
-                decoration: const InputDecoration(
-                  labelText: 'Auftragsnummer (optional)',
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: TextField(
-                controller: operation,
-                textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(
-                  labelText: 'Arbeitsgang',
-                  hintText: 'z. B. FP',
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: quantity,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Gesamtstück'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: TextField(
-                controller: minutes,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(labelText: 'min/Stück'),
-              ),
-            ),
-          ],
-        ),
-        if (error != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
+    child: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            widget.item == null ? 'Arbeit hinzufügen' : 'Arbeit bearbeiten',
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
           ),
-        const SizedBox(height: 18),
-        FilledButton(onPressed: submit, child: const Text('ÜBERNEHMEN')),
-      ],
+          if (widget.item == null) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: scanCard,
+              icon: const Icon(Icons.qr_code_scanner),
+              label: const Text('AUFTRAGSKARTE SCANNEN'),
+            ),
+          ],
+          const SizedBox(height: 18),
+          TextField(
+            controller: dieNumber,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Gesenknummer'),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: orderNumber,
+                  decoration: const InputDecoration(
+                    labelText: 'Auftragsnummer (optional)',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: operation,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'Arbeitsgang',
+                    hintText: 'z. B. FP',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: quantity,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Gesamtstück'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: minutes,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(labelText: 'min/Stück'),
+                ),
+              ),
+            ],
+          ),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          const SizedBox(height: 18),
+          FilledButton(onPressed: submit, child: const Text('ÜBERNEHMEN')),
+        ],
+      ),
     ),
   );
+
+  Future<void> scanCard() async {
+    final raw = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (context) => const CardScannerPage()),
+    );
+    if (raw == null || !mounted) return;
+    final data = parseCardText(raw);
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.qr_code_2),
+        title: const Text('Gelesene Auftragskarte'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _ScanValue(label: 'Auftragsnummer', value: data.orderNumber),
+              _ScanValue(label: 'Gesenknummer', value: data.dieNumber),
+              _ScanValue(
+                label: 'Gesamtstück',
+                value: data.quantity?.toString(),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'QR-Rohinhalt',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              SelectableText(raw),
+              if (!data.hasRecognizedValue) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  'Noch keine bekannte Feldstruktur erkannt. Der Rohinhalt wurde trotzdem erfolgreich gelesen.',
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('VERWERFEN'),
+          ),
+          FilledButton(
+            onPressed: data.hasRecognizedValue
+                ? () => Navigator.pop(context, true)
+                : null,
+            child: const Text('ANGABEN ÜBERNEHMEN'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true || !mounted) return;
+    setState(() {
+      if (data.orderNumber != null) orderNumber.text = data.orderNumber!;
+      if (data.dieNumber != null) dieNumber.text = data.dieNumber!;
+      if (data.quantity != null) quantity.text = data.quantity.toString();
+      error = null;
+    });
+  }
+
   void submit() {
     final amount = int.tryParse(quantity.text.trim());
     final pieceTime = double.tryParse(minutes.text.trim().replaceAll(',', '.'));
@@ -1119,6 +1194,30 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
       ),
     );
   }
+}
+
+class _ScanValue extends StatelessWidget {
+  const _ScanValue({required this.label, required this.value});
+
+  final String label;
+  final String? value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      children: [
+        Expanded(child: Text(label)),
+        Text(
+          value ?? 'nicht im QR-Code',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: value == null ? Theme.of(context).colorScheme.outline : null,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class TodayPage extends StatefulWidget {
