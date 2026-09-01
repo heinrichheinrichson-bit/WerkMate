@@ -171,7 +171,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.16.2',
+              'Mobile 0.16.3',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),

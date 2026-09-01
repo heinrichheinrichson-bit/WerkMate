@@ -75,6 +75,18 @@ void main() {
     expect(scan.quantity, 24);
   });
 
+  test('charge quantity is fallback when OCR misses only FA quantity', () {
+    final scan = parseCardText(
+      'FA|4022377\n4583-00\nGesamtmenge [Charge]\n24\nGesamtmenge [FA]',
+    );
+    expect(scan.quantity, 24);
+  });
+
+  test('charge quantity alone is not guessed without an FA label', () {
+    final scan = parseCardText('FA|4022377\n4583-00\nGesamtmenge [Charge]\n24');
+    expect(scan.quantity, isNull);
+  });
+
   test('repeated final card quantities are safely recognized', () {
     final scan = parseCardText(
       'FA|4022377\n4022377\n4583-00\nL334\nB24B52\n24\n24',

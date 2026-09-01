@@ -42,9 +42,22 @@ CardScanData parseCardText(String rawValue) {
       ? null
       : labeledDieNumber;
   final rawDieNumber = safeLabeledDieNumber ?? standaloneDieNumber;
-  final labeledQuantity = firstMatch(
-    RegExp(r'Gesamtmenge(?:\s*\[FA\])?\s*[:|;]?\s*(\d+)', caseSensitive: false),
+  final faQuantity = firstMatch(
+    RegExp(
+      r'Gesamtmenge\s*[\[({]?\s*FA\s*[\])}]?\s*[:|;]?\s*(\d+)',
+      caseSensitive: false,
+    ),
   );
+  final chargeQuantity = firstMatch(
+    RegExp(
+      r'Gesamtmenge\s*[\[({]?\s*Charge\s*[\])}]?\s*[:|;]?\s*(\d+)',
+      caseSensitive: false,
+    ),
+  );
+  final hasFaQuantityLabel = RegExp(
+    r'Gesamtmenge\s*[\[({]?\s*FA\s*[\])}]?',
+    caseSensitive: false,
+  ).hasMatch(rawValue);
   final standaloneNumbers = rawValue
       .split(RegExp(r'[\r\n]+'))
       .map((line) => line.trim())
@@ -62,7 +75,12 @@ CardScanData parseCardText(String rawValue) {
     orderNumber: orderNumber,
     dieNumber: normalizeDieNumber(rawDieNumber),
     rawDieNumber: rawDieNumber,
-    quantity: int.tryParse(labeledQuantity ?? repeatedQuantity ?? ''),
+    quantity: int.tryParse(
+      faQuantity ??
+          repeatedQuantity ??
+          (hasFaQuantityLabel ? chargeQuantity : null) ??
+          '',
+    ),
   );
 }
 
