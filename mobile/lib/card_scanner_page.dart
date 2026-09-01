@@ -22,25 +22,33 @@ class CardScannerPage extends StatefulWidget {
 class _CardScannerPageState extends State<CardScannerPage> {
   final controller = MobileScannerController(
     cameraResolution: const Size(1920, 1080),
-    detectionSpeed: DetectionSpeed.noDuplicates,
+    detectionSpeed: DetectionSpeed.unrestricted,
     formats: const [BarcodeFormat.qrCode],
     returnImage: true,
   );
-  bool returningResult = false;
   bool recognizingText = false;
+  String? qrValue;
+  List<int>? latestImage;
 
-  Future<void> detected(BarcodeCapture capture) async {
-    if (returningResult) return;
+  void detected(BarcodeCapture capture) {
+    if (recognizingText) return;
     final raw = capture.barcodes
         .map((barcode) => barcode.rawValue?.trim())
         .whereType<String>()
         .where((value) => value.isNotEmpty)
         .firstOrNull;
     if (raw == null) return;
-    returningResult = true;
-    if (mounted) setState(() => recognizingText = true);
+    latestImage = capture.image ?? latestImage;
+    if (qrValue != raw && mounted) setState(() => qrValue = raw);
+  }
+
+  Future<void> captureCard() async {
+    final raw = qrValue;
+    final image = latestImage;
+    if (raw == null || image == null || recognizingText) return;
+    setState(() => recognizingText = true);
     await controller.stop();
-    final printedText = await recognizePrintedText(capture.image);
+    final printedText = await recognizePrintedText(image);
     if (mounted) {
       Navigator.pop(
         context,
@@ -110,20 +118,36 @@ class _CardScannerPageState extends State<CardScannerPage> {
             ),
           ),
         ),
-        const SafeArea(
+        SafeArea(
           child: Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
               padding: EdgeInsets.all(24),
-              child: Text(
-                'Die gesamte Auftragskarte in den Rahmen halten',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  shadows: [Shadow(blurRadius: 8, color: Colors.black)],
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    qrValue == null
+                        ? 'Die gesamte Auftragskarte in den Rahmen halten'
+                        : 'QR-Code erkannt – Karte ruhig und vollständig ausrichten',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      shadows: [Shadow(blurRadius: 8, color: Colors.black)],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: qrValue == null ? null : captureCard,
+                    icon: const Icon(Icons.camera_alt),
+                    label: const Text('KARTE ERFASSEN'),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 58),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

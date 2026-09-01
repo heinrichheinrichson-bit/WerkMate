@@ -59,6 +59,13 @@ void main() {
     expect(scan.quantity, isNull);
   });
 
+  test('order number is never reused as die number', () {
+    final scan = parseCardText('FA|4022377\nGN 4022377-00\n24\n24');
+    expect(scan.orderNumber, '4022377');
+    expect(scan.dieNumber, isNull);
+    expect(scan.quantity, 24);
+  });
+
   test('repeated final card quantities are safely recognized', () {
     final scan = parseCardText(
       'FA|4022377\n4022377\n4583-00\nL334\nB24B52\n24\n24',

@@ -171,7 +171,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.16.0',
+              'Mobile 0.16.1',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -1227,7 +1227,7 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('VERWERFEN'),
+            child: const Text('ERNEUT SCANNEN'),
           ),
           FilledButton(
             onPressed: data.hasRecognizedValue
@@ -1238,7 +1238,12 @@ class _WorkItemSheetState extends State<WorkItemSheet> {
         ],
       ),
     );
-    if (accepted != true || !mounted) return;
+    if (!mounted) return;
+    if (accepted == false) {
+      await scanCard();
+      return;
+    }
+    if (accepted != true) return;
     setState(() {
       if (data.orderNumber != null) orderNumber.text = data.orderNumber!;
       if (data.dieNumber != null) dieNumber.text = data.dieNumber!;

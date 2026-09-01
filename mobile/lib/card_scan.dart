@@ -32,7 +32,10 @@ CardScanData parseCardText(String rawValue) {
       .map((line) => line.trim())
       .where((line) => RegExp(r'^\d{3,7}-\d{2}$').hasMatch(line))
       .firstOrNull;
-  final rawDieNumber = labeledDieNumber ?? standaloneDieNumber;
+  final possibleRawDieNumber = labeledDieNumber ?? standaloneDieNumber;
+  final rawDieNumber = normalizeDieNumber(possibleRawDieNumber) == orderNumber
+      ? null
+      : possibleRawDieNumber;
   final labeledQuantity = firstMatch(
     RegExp(r'Gesamtmenge(?:\s*\[FA\])?\s*[:|;]?\s*(\d+)', caseSensitive: false),
   );
