@@ -27,6 +27,13 @@ void main() {
     expect(normalizeDieNumber('4583-01'), '4583');
   });
 
+  test('standalone printed die number is recognized and normalized', () {
+    final scan = parseCardText('FA|4022377\n4022377\n4583-00');
+    expect(scan.rawDieNumber, '4583-00');
+    expect(scan.dieNumber, '4583');
+    expect(scan.quantity, isNull);
+  });
+
   test('work reports are stored locally with deviations', () async {
     final store = ReportStore();
     final report = WorkReport(

@@ -21,6 +21,7 @@ class CardScannerPage extends StatefulWidget {
 
 class _CardScannerPageState extends State<CardScannerPage> {
   final controller = MobileScannerController(
+    cameraResolution: const Size(1920, 1080),
     detectionSpeed: DetectionSpeed.noDuplicates,
     formats: const [BarcodeFormat.qrCode],
     returnImage: true,
@@ -100,8 +101,8 @@ class _CardScannerPageState extends State<CardScannerPage> {
         IgnorePointer(
           child: Center(
             child: Container(
-              width: 270,
-              height: 270,
+              width: 340,
+              height: 245,
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.white, width: 3),
                 borderRadius: BorderRadius.circular(24),
@@ -115,7 +116,7 @@ class _CardScannerPageState extends State<CardScannerPage> {
             child: Padding(
               padding: EdgeInsets.all(24),
               child: Text(
-                'QR-Code vollständig in den Rahmen halten',
+                'Die gesamte Auftragskarte in den Rahmen halten',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white,

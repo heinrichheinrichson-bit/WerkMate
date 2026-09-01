@@ -165,7 +165,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.15.0',
+              'Mobile 0.15.1',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -1229,7 +1229,7 @@ class _ScanValue extends StatelessWidget {
       children: [
         Expanded(child: Text(label)),
         Text(
-          value ?? 'nicht im QR-Code',
+          value ?? 'nicht erkannt',
           style: TextStyle(
             fontWeight: FontWeight.w700,
             color: value == null ? Theme.of(context).colorScheme.outline : null,

@@ -24,9 +24,15 @@ CardScanData parseCardText(String rawValue) {
   final orderNumber = firstMatch(
     RegExp(r'(?:^|[\s|;])FA\s*[|:;]\s*([A-Z0-9-]+)', caseSensitive: false),
   );
-  final rawDieNumber = firstMatch(
+  final labeledDieNumber = firstMatch(
     RegExp(r'(?:^|\s)GN\s*[:|;]?\s*([0-9]+(?:-[0-9]+)?)', caseSensitive: false),
   );
+  final standaloneDieNumber = rawValue
+      .split(RegExp(r'[\r\n]+'))
+      .map((line) => line.trim())
+      .where((line) => RegExp(r'^\d{3,7}-\d{2}$').hasMatch(line))
+      .firstOrNull;
+  final rawDieNumber = labeledDieNumber ?? standaloneDieNumber;
   final quantityText = firstMatch(
     RegExp(r'Gesamtmenge(?:\s*\[FA\])?\s*[:|;]?\s*(\d+)', caseSensitive: false),
   );
