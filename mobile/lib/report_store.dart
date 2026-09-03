@@ -55,6 +55,9 @@ class WorkReport {
       plannedEnd.difference(plannedStart ?? startedAt).inSeconds / 60;
   double get timeDeviationMinutes => actualMinutes - plannedMinutes;
   int get pieceDeviation => actualPieces - plannedPieces;
+  double get outputDeviationMinutes => pieceDeviation * item.minutesPerPiece;
+  double get outputDeviationPercent =>
+      plannedPieces == 0 ? 0 : pieceDeviation / plannedPieces * 100;
 
   Map<String, Object?> toJson() => {
     'id': id,

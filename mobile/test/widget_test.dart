@@ -129,6 +129,8 @@ void main() {
     expect(saved.single.item.orderNumber, '40230747');
     expect(saved.single.pieceDeviation, 1);
     expect(saved.single.timeDeviationMinutes, 10);
+    expect(saved.single.outputDeviationMinutes, 20);
+    expect(saved.single.outputDeviationPercent, 20);
     expect(saved.single.note, 'Testnotiz');
     await store.delete('report-1');
     expect(await store.load(), isEmpty);
@@ -171,8 +173,11 @@ void main() {
     );
     await tester.tap(find.text('Ges. 8720'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('10 Min. Verzug'), findsOneWidget);
-    expect(find.text('+1 Stück mehr als geplant'), findsOneWidget);
+    expect(
+      find.textContaining('Rückmeldezeit: 10 Min. später'),
+      findsOneWidget,
+    );
+    expect(find.text('+1 Stück · +20 Soll-Min. (+20,0 %)'), findsOneWidget);
     expect(find.text('Notiz: Werkzeug geprüft'), findsOneWidget);
   });
 

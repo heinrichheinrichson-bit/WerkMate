@@ -171,7 +171,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.16.3',
+              'Mobile 0.17.0',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -1488,6 +1488,18 @@ class _TodayPageState extends State<TodayPage> {
     final elapsedMinutes = running
         ? (elapsed.clamp(0, total > 0 ? total : 0) / 60000).floor()
         : 0;
+    final expectedPiecesNow = running
+        ? (productiveMinutes(
+                    startedAt!,
+                    now.isAfter(targetEnd!) ? targetEnd! : now,
+                    step.pauseStart,
+                    step.pauseEnd,
+                  ) /
+                  step.item.minutesPerPiece)
+              .clamp(0, step.wholePieces.toDouble())
+              .toDouble()
+        : 0.0;
+    final wholeExpectedNow = expectedPiecesNow.floor();
     return ResponsivePage(
       children: [
         PageTitle(
@@ -1567,6 +1579,13 @@ class _TodayPageState extends State<TodayPage> {
                     '${(progress * 100).floor()} % · $elapsedMinutes von $totalMinutes Min.',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
+                if (running) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Soll bis jetzt: ${_number(expectedPiecesNow)} Stück · $wholeExpectedNow vollständig',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Text(
                   running
@@ -3103,6 +3122,8 @@ class ReportHistoryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final time = report.timeDeviationMinutes;
     final pieces = report.pieceDeviation;
+    final outputMinutes = report.outputDeviationMinutes;
+    final outputPercent = report.outputDeviationPercent;
     final timePercent = report.plannedMinutes == 0
         ? 0.0
         : time / report.plannedMinutes * 100;
@@ -3121,19 +3142,6 @@ class ReportHistoryCard extends StatelessWidget {
         ),
         children: [
           const Divider(),
-          _DeviationRow(
-            icon: Icons.schedule,
-            label: time > 0
-                ? '${_number(time.abs())} Min. Verzug (${_signedPercent(timePercent)})'
-                : time < 0
-                ? '${_number(time.abs())} Min. früher (${_signedPercent(timePercent)})'
-                : 'Zeit genau eingehalten',
-            color: time > 0
-                ? const Color(0xffb42318)
-                : time < 0
-                ? const Color(0xff067647)
-                : const Color(0xff667085),
-          ),
           if (report.item.isCredit)
             _DeviationRow(
               icon: Icons.savings_outlined,
@@ -3144,9 +3152,9 @@ class ReportHistoryCard extends StatelessWidget {
             _DeviationRow(
               icon: Icons.inventory_2_outlined,
               label: pieces > 0
-                  ? '+$pieces Stück mehr als geplant'
+                  ? '+$pieces Stück · +${_number(outputMinutes)} Soll-Min. (${_signedPercent(outputPercent)})'
                   : pieces < 0
-                  ? '${pieces.abs()} Stück weniger als geplant'
+                  ? '${pieces.abs()} Stück weniger · ${_number(outputMinutes)} Soll-Min. (${_signedPercent(outputPercent)})'
                   : 'Stückzahl genau eingehalten',
               color: pieces > 0
                   ? const Color(0xff067647)
@@ -3154,6 +3162,19 @@ class ReportHistoryCard extends StatelessWidget {
                   ? const Color(0xffb42318)
                   : const Color(0xff667085),
             ),
+          _DeviationRow(
+            icon: Icons.schedule,
+            label: time > 0
+                ? 'Rückmeldezeit: ${_number(time.abs())} Min. später (${_signedPercent(timePercent)})'
+                : time < 0
+                ? 'Rückmeldezeit: ${_number(time.abs())} Min. früher (${_signedPercent(timePercent)})'
+                : 'Rückmeldezeit genau eingehalten',
+            color: time > 0
+                ? const Color(0xffb42318)
+                : time < 0
+                ? const Color(0xff067647)
+                : const Color(0xff667085),
+          ),
           const SizedBox(height: 6),
           Align(
             alignment: Alignment.centerLeft,
