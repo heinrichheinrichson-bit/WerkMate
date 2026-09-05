@@ -171,7 +171,7 @@ class _WerkMateHomeState extends State<WerkMateHome> {
           padding: EdgeInsets.only(right: 18),
           child: Center(
             child: Text(
-              'Mobile 0.17.0',
+              'Mobile 0.17.1',
               style: TextStyle(color: Color(0xff667085)),
             ),
           ),
@@ -1784,6 +1784,7 @@ class _TodayPageState extends State<TodayPage> {
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       item: step.item,
       plannedPieces: step.wholePieces,
+      plannedExactPieces: step.exactPieces,
       actualPieces: draft.actualPieces,
       reportedPieces: draft.reportedPieces,
       startedAt: startedAt!,
@@ -3121,7 +3122,7 @@ class ReportHistoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final time = report.timeDeviationMinutes;
-    final pieces = report.pieceDeviation;
+    final pieces = report.officialPieceDeviation;
     final outputMinutes = report.outputDeviationMinutes;
     final outputPercent = report.outputDeviationPercent;
     final timePercent = report.plannedMinutes == 0
@@ -3151,14 +3152,14 @@ class ReportHistoryCard extends StatelessWidget {
           else
             _DeviationRow(
               icon: Icons.inventory_2_outlined,
-              label: pieces > 0
-                  ? '+$pieces Stück · +${_number(outputMinutes)} Soll-Min. (${_signedPercent(outputPercent)})'
-                  : pieces < 0
-                  ? '${pieces.abs()} Stück weniger · ${_number(outputMinutes)} Soll-Min. (${_signedPercent(outputPercent)})'
+              label: pieces > 0.005
+                  ? '+${_preciseNumber(pieces)} Stück gemeldet · +${_number(outputMinutes)} Soll-Min. (${_signedPercent(outputPercent)})'
+                  : pieces < -0.005
+                  ? '${_preciseNumber(pieces.abs())} Stück weniger gemeldet · ${_number(outputMinutes)} Soll-Min. (${_signedPercent(outputPercent)})'
                   : 'Stückzahl genau eingehalten',
-              color: pieces > 0
+              color: pieces > 0.005
                   ? const Color(0xff067647)
-                  : pieces < 0
+                  : pieces < -0.005
                   ? const Color(0xffb42318)
                   : const Color(0xff667085),
             ),
@@ -3241,6 +3242,12 @@ String _date(DateTime value) =>
 
 String _signedPercent(double value) =>
     '${value >= 0 ? '+' : '−'}${value.abs().toStringAsFixed(1).replaceAll('.', ',')} %';
+
+String _preciseNumber(double value) => value
+    .toStringAsFixed(2)
+    .replaceFirst(RegExp(r'0+$'), '')
+    .replaceFirst(RegExp(r'\.$'), '')
+    .replaceAll('.', ',');
 
 class ScheduleCard extends StatelessWidget {
   const ScheduleCard({

@@ -129,8 +129,8 @@ void main() {
     expect(saved.single.item.orderNumber, '40230747');
     expect(saved.single.pieceDeviation, 1);
     expect(saved.single.timeDeviationMinutes, 10);
-    expect(saved.single.outputDeviationMinutes, 20);
-    expect(saved.single.outputDeviationPercent, 20);
+    expect(saved.single.outputDeviationMinutes, 0);
+    expect(saved.single.outputDeviationPercent, 0);
     expect(saved.single.note, 'Testnotiz');
     await store.delete('report-1');
     expect(await store.load(), isEmpty);
@@ -156,7 +156,7 @@ void main() {
       ),
       plannedPieces: 5,
       actualPieces: 6,
-      reportedPieces: 5,
+      reportedPieces: 6,
       plannedStart: DateTime(2026, 8, 29, 10),
       startedAt: DateTime(2026, 8, 29, 10),
       plannedEnd: DateTime(2026, 8, 29, 11, 40),
@@ -177,8 +177,37 @@ void main() {
       find.textContaining('Rückmeldezeit: 10 Min. später'),
       findsOneWidget,
     );
-    expect(find.text('+1 Stück · +20 Soll-Min. (+20,0 %)'), findsOneWidget);
+    expect(
+      find.text('+1 Stück gemeldet · +20 Soll-Min. (+20,0 %)'),
+      findsOneWidget,
+    );
     expect(find.text('Notiz: Werkzeug geprüft'), findsOneWidget);
+  });
+
+  test('official output excludes pieces retained as credit', () {
+    final report = WorkReport(
+      id: 'credit-output',
+      item: const WorkItem(
+        id: 'work-credit-output',
+        dieNumber: '8695',
+        quantity: 35,
+        minutesPerPiece: 25,
+      ),
+      plannedPieces: 18,
+      actualPieces: 30,
+      reportedPieces: 19,
+      plannedStart: DateTime(2026, 9, 4, 13, 45),
+      startedAt: DateTime(2026, 9, 4, 13, 49),
+      plannedEnd: DateTime(2026, 9, 4, 21, 45),
+      endedAt: DateTime(2026, 9, 4, 21, 44),
+      completedOrder: false,
+      note: '',
+    );
+
+    expect(report.officialPlannedPieces, closeTo(18.48, 0.001));
+    expect(report.officialPieceDeviation, closeTo(0.52, 0.001));
+    expect(report.outputDeviationMinutes, closeTo(13, 0.001));
+    expect(report.outputDeviationPercent, closeTo(2.814, 0.001));
   });
 
   test('report time is never future and at most 59 minutes old', () {

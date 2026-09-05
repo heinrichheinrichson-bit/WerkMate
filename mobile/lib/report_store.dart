@@ -32,6 +32,7 @@ class WorkReport {
     required this.id,
     required this.item,
     required this.plannedPieces,
+    this.plannedExactPieces,
     required this.actualPieces,
     required this.reportedPieces,
     required this.startedAt,
@@ -45,6 +46,7 @@ class WorkReport {
   final String id;
   final WorkItem item;
   final int plannedPieces, actualPieces, reportedPieces;
+  final double? plannedExactPieces;
   final DateTime startedAt, endedAt, plannedEnd;
   final DateTime? plannedStart;
   final bool completedOrder;
@@ -55,14 +57,47 @@ class WorkReport {
       plannedEnd.difference(plannedStart ?? startedAt).inSeconds / 60;
   double get timeDeviationMinutes => actualMinutes - plannedMinutes;
   int get pieceDeviation => actualPieces - plannedPieces;
-  double get outputDeviationMinutes => pieceDeviation * item.minutesPerPiece;
-  double get outputDeviationPercent =>
-      plannedPieces == 0 ? 0 : pieceDeviation / plannedPieces * 100;
+  double get officialPlannedPieces =>
+      plannedExactPieces ?? _inferPlannedExactPieces();
+  double get officialPieceDeviation => reportedPieces - officialPlannedPieces;
+  double get outputDeviationMinutes =>
+      officialPieceDeviation * item.minutesPerPiece;
+  double get outputDeviationPercent => officialPlannedPieces == 0
+      ? 0
+      : officialPieceDeviation / officialPlannedPieces * 100;
+
+  double _inferPlannedExactPieces() {
+    final start = plannedStart;
+    if (start == null || item.minutesPerPiece <= 0) {
+      return plannedPieces.toDouble();
+    }
+    var productive = plannedMinutes;
+    for (var dayOffset = -1; dayOffset <= 1; dayOffset++) {
+      final day = DateTime(start.year, start.month, start.day + dayOffset);
+      for (final template in ShiftTemplate.all) {
+        final shift = template.onDate(day);
+        final overlapStart = start.isAfter(shift.pauseStart)
+            ? start
+            : shift.pauseStart;
+        final overlapEnd = plannedEnd.isBefore(shift.pauseEnd)
+            ? plannedEnd
+            : shift.pauseEnd;
+        if (overlapEnd.isAfter(overlapStart)) {
+          productive -= overlapEnd.difference(overlapStart).inSeconds / 60;
+        }
+      }
+    }
+    final inferred = productive / item.minutesPerPiece;
+    if (inferred < 0) return 0;
+    if (inferred > item.quantity) return item.quantity.toDouble();
+    return inferred;
+  }
 
   Map<String, Object?> toJson() => {
     'id': id,
     'item': item.toJson(),
     'plannedPieces': plannedPieces,
+    'plannedExactPieces': plannedExactPieces,
     'actualPieces': actualPieces,
     'reportedPieces': reportedPieces,
     'startedAt': startedAt.toIso8601String(),
@@ -77,6 +112,7 @@ class WorkReport {
     id: json['id'] as String,
     item: WorkItem.fromJson(Map<String, dynamic>.from(json['item'] as Map)),
     plannedPieces: json['plannedPieces'] as int,
+    plannedExactPieces: (json['plannedExactPieces'] as num?)?.toDouble(),
     actualPieces: json['actualPieces'] as int,
     reportedPieces: json['reportedPieces'] as int,
     startedAt: DateTime.parse(json['startedAt'] as String),
